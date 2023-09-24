@@ -40,12 +40,12 @@ model <- lm(TNFa ~ drug * time, data=TNFa)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 TNFa <- TNFa[which(TNFa$time == "5d"),]
 TNFa$treatment <- factor(TNFa$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -89,7 +89,7 @@ TNFa.plot <- ggplot(TNFa.summary, aes(x = treatment, y = mean, fill = treatment)
   geom_signif(y_position = asterisk.position + 50, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 TNFa.plot
@@ -111,12 +111,12 @@ model <- lm(INFg ~ drug * time, data=INFg)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 INFg <- INFg[which(INFg$time == "5d"),]
 INFg$treatment <- factor(INFg$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -160,7 +160,7 @@ INFg.plot <- ggplot(INFg.summary, aes(x = treatment, y = mean, fill = treatment)
   geom_signif(y_position = asterisk.position + 0.4, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 INFg.plot
@@ -182,12 +182,12 @@ model <- lm(IL1b ~ drug * time, data=IL1b)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 IL1b <- IL1b[which(IL1b$time == "5d"),]
 IL1b$treatment <- factor(IL1b$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -231,7 +231,7 @@ IL1b.plot <- ggplot(IL1b.summary, aes(x = treatment, y = mean, fill = treatment)
   geom_signif(y_position = asterisk.position + 0.1, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 IL1b.plot
@@ -253,12 +253,12 @@ model <- lm(IL5 ~ drug * time, data=IL5)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 IL5 <- IL5[which(IL5$time == "5d"),]
 IL5$treatment <- factor(IL5$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -302,7 +302,7 @@ IL5.plot <- ggplot(IL5.summary, aes(x = treatment, y = mean, fill = treatment)) 
   geom_signif(y_position = asterisk.position + 1, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 IL5.plot
@@ -324,12 +324,12 @@ model <- lm(IL6 ~ drug * time, data=IL6)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 IL6 <- IL6[which(IL6$time == "5d"),]
 IL6$treatment <- factor(IL6$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -373,7 +373,7 @@ IL6.plot <- ggplot(IL6.summary, aes(x = treatment, y = mean, fill = treatment)) 
   geom_signif(y_position = asterisk.position + 10, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 IL6.plot
@@ -395,12 +395,12 @@ model <- lm(CXCL1 ~ drug * time, data=CXCL1)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 CXCL1 <- CXCL1[which(CXCL1$time == "5d"),]
 CXCL1$treatment <- factor(CXCL1$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -444,7 +444,7 @@ CXCL1.plot <- ggplot(CXCL1.summary, aes(x = treatment, y = mean, fill = treatmen
   geom_signif(y_position = asterisk.position + 10, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 CXCL1.plot
@@ -466,12 +466,12 @@ model <- lm(IL10 ~ drug * time, data=IL10)
 model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
 model <- test(model$contrasts)
 
-P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+p.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
   
-P.symbol <- "NS" 
-P.symbol[which(P.adj <= 0.05)] <- "*"
-P.symbol[which(P.adj <= 0.01)] <- "**"
-P.symbol[which(P.adj <= 0.001)] <- "***"
+p.symbol <- "NS" 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
 
 IL10 <- IL10[which(IL10$time == "5d"),]
 IL10$treatment <- factor(IL10$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
@@ -515,7 +515,7 @@ IL10.plot <- ggplot(IL10.summary, aes(x = treatment, y = mean, fill = treatment)
   geom_signif(y_position = asterisk.position + 10, xmin = 1,
   xmax = 2, tip_length = 0.01,
   fontface = "bold", vjust = 0.2,
-  annotation = P.symbol,
+  annotation = p.symbol,
   size = 0.2, textsize = 1.55)
 
 IL10.plot
