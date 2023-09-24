@@ -1,0 +1,767 @@
+---
+title: "sfigure7"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(openxlsx)
+library(plotrix)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(cowplot)
+library(reshape2)
+library(emmeans)
+```
+
+# Load peripheral data
+```{r}
+blood <- read.xlsx("/projects/mludwig/hippo_GLP1/data/in_vivo/sc_blood_measurements.xlsx")
+```
+
+# Supplementary figure 7a
+```{r}
+# TNFa
+TNFa <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Tnfa")]
+colnames(TNFa)[4] <- "TNFa"
+TNFa <- TNFa[!is.na(TNFa$TNFa),]
+TNFa$drug <- factor(TNFa$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+TNFa$time <- factor(TNFa$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(TNFa ~ drug * time, data=TNFa)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+TNFa <- TNFa[which(TNFa$time == "5d"),]
+TNFa$treatment <- factor(TNFa$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(TNFa$TNFa)
+
+# Mean and SEM
+TNFa.summary <- aggregate(TNFa[, c("TNFa"), drop = F],
+                          by = list(TNFa$treatment), FUN = mean, na.rm = T)
+colnames(TNFa.summary) <- c("treatment", "mean")
+TNFa.summary$SEM <- aggregate(TNFa[, c("TNFa"), drop = F], 
+                              by = list(TNFa$treatment), 
+                              FUN = std.error, na.rm = T)$TNFa
+TNFa.summary$title <- paste0("TNF", "\u03b1")
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+TNFa.plot <- ggplot(TNFa.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = TNFa, aes(x = treatment, y = TNFa),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = TNFa.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(TNFa.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 1000, 200), limits = c(0, 800)) +
+  geom_signif(y_position = asterisk.position + 50, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+TNFa.plot
+```
+
+```{r}
+# INFg
+INFg <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Infg")]
+colnames(INFg)[4] <- "INFg"
+INFg <- INFg[!is.na(INFg$INFg),]
+INFg$drug <- factor(INFg$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+INFg$time <- factor(INFg$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(INFg ~ drug * time, data=INFg)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+INFg <- INFg[which(INFg$time == "5d"),]
+INFg$treatment <- factor(INFg$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(INFg$INFg)
+
+# Mean and SEM
+INFg.summary <- aggregate(INFg[, c("INFg"), drop = F],
+                          by = list(INFg$treatment), FUN = mean, na.rm = T)
+colnames(INFg.summary) <- c("treatment", "mean")
+INFg.summary$SEM <- aggregate(INFg[, c("INFg"), drop = F], 
+                              by = list(INFg$treatment), 
+                              FUN = std.error, na.rm = T)$INFg
+INFg.summary$title <- paste0("INF", "\u03b3")
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+INFg.plot <- ggplot(INFg.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = INFg, aes(x = treatment, y = INFg),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = INFg.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(INFg.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 10, 2), limits = c(0, 9)) +
+  geom_signif(y_position = asterisk.position + 0.4, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+INFg.plot
+```
+
+```{r}
+# IL-1b
+IL1b <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Il1b")]
+colnames(IL1b)[4] <- "IL1b"
+IL1b <- IL1b[!is.na(IL1b$IL1b),]
+IL1b$drug <- factor(IL1b$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+IL1b$time <- factor(IL1b$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(IL1b ~ drug * time, data=IL1b)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+IL1b <- IL1b[which(IL1b$time == "5d"),]
+IL1b$treatment <- factor(IL1b$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(IL1b$IL1b)
+
+# Mean and SEM
+IL1b.summary <- aggregate(IL1b[, c("IL1b"), drop = F],
+                          by = list(IL1b$treatment), FUN = mean, na.rm = T)
+colnames(IL1b.summary) <- c("treatment", "mean")
+IL1b.summary$SEM <- aggregate(IL1b[, c("IL1b"), drop = F], 
+                              by = list(IL1b$treatment), 
+                              FUN = std.error, na.rm = T)$IL1b
+IL1b.summary$title <- paste0("IL-1", "\u03b2")
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+IL1b.plot <- ggplot(IL1b.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IL1b, aes(x = treatment, y = IL1b),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IL1b.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(IL1b.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 2, 0.5), limits = c(0, 1.5)) +
+  geom_signif(y_position = asterisk.position + 0.1, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+IL1b.plot
+```
+
+```{r}
+# IL-5
+IL5 <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Il5")]
+colnames(IL5)[4] <- "IL5"
+IL5 <- IL5[!is.na(IL5$IL5),]
+IL5$drug <- factor(IL5$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+IL5$time <- factor(IL5$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(IL5 ~ drug * time, data=IL5)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+IL5 <- IL5[which(IL5$time == "5d"),]
+IL5$treatment <- factor(IL5$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(IL5$IL5)
+
+# Mean and SEM
+IL5.summary <- aggregate(IL5[, c("IL5"), drop = F],
+                          by = list(IL5$treatment), FUN = mean, na.rm = T)
+colnames(IL5.summary) <- c("treatment", "mean")
+IL5.summary$SEM <- aggregate(IL5[, c("IL5"), drop = F], 
+                              by = list(IL5$treatment), 
+                              FUN = std.error, na.rm = T)$IL5
+IL5.summary$title <- "IL-5"
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+IL5.plot <- ggplot(IL5.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IL5, aes(x = treatment, y = IL5),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IL5.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(IL5.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 22)) + 
+  geom_signif(y_position = asterisk.position + 1, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+IL5.plot
+```
+
+```{r}
+# IL-6
+IL6 <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Il6")]
+colnames(IL6)[4] <- "IL6"
+IL6 <- IL6[!is.na(IL6$IL6),]
+IL6$drug <- factor(IL6$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+IL6$time <- factor(IL6$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(IL6 ~ drug * time, data=IL6)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+IL6 <- IL6[which(IL6$time == "5d"),]
+IL6$treatment <- factor(IL6$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(IL6$IL6)
+
+# Mean and SEM
+IL6.summary <- aggregate(IL6[, c("IL6"), drop = F],
+                          by = list(IL6$treatment), FUN = mean, na.rm = T)
+colnames(IL6.summary) <- c("treatment", "mean")
+IL6.summary$SEM <- aggregate(IL6[, c("IL6"), drop = F], 
+                              by = list(IL6$treatment), 
+                              FUN = std.error, na.rm = T)$IL6
+IL6.summary$title <- "IL-6"
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+IL6.plot <- ggplot(IL6.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IL6, aes(x = treatment, y = IL6),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IL6.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(IL6.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 300, 50), limits = c(0, 285)) +
+  geom_signif(y_position = asterisk.position + 10, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+IL6.plot
+```
+
+```{r}
+# CXCL1
+CXCL1 <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Cxcl1")]
+colnames(CXCL1)[4] <- "CXCL1"
+CXCL1 <- CXCL1[!is.na(CXCL1$CXCL1),]
+CXCL1$drug <- factor(CXCL1$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+CXCL1$time <- factor(CXCL1$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(CXCL1 ~ drug * time, data=CXCL1)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+CXCL1 <- CXCL1[which(CXCL1$time == "5d"),]
+CXCL1$treatment <- factor(CXCL1$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(CXCL1$CXCL1)
+
+# Mean and SEM
+CXCL1.summary <- aggregate(CXCL1[, c("CXCL1"), drop = F],
+                          by = list(CXCL1$treatment), FUN = mean, na.rm = T)
+colnames(CXCL1.summary) <- c("treatment", "mean")
+CXCL1.summary$SEM <- aggregate(CXCL1[, c("CXCL1"), drop = F], 
+                              by = list(CXCL1$treatment), 
+                              FUN = std.error, na.rm = T)$CXCL1
+CXCL1.summary$title <- "CXCL1"
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+CXCL1.plot <- ggplot(CXCL1.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = CXCL1, aes(x = treatment, y = CXCL1),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = CXCL1.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(CXCL1.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 150, 50), limits = c(0, 130)) +
+  geom_signif(y_position = asterisk.position + 10, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+CXCL1.plot
+```
+
+```{r}
+# IL-10
+IL10 <- blood[which(blood$time != "11d"), c("treatment", "drug", "time", "Il10")]
+colnames(IL10)[4] <- "IL10"
+IL10 <- IL10[!is.na(IL10$IL10),]
+IL10$drug <- factor(IL10$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS")) 
+IL10$time <- factor(IL10$time, levels = c("2h", "24h", "5d")) 
+
+# Compute statistics
+# Linear model
+model <- lm(IL10 ~ drug * time, data=IL10)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+P.adj <- model$p.value[which(model$contrast == "(Veh-LPS) - (Sema-LPS)")][3]
+  
+P.symbol <- "NS" 
+P.symbol[which(P.adj <= 0.05)] <- "*"
+P.symbol[which(P.adj <= 0.01)] <- "**"
+P.symbol[which(P.adj <= 0.001)] <- "***"
+
+IL10 <- IL10[which(IL10$time == "5d"),]
+IL10$treatment <- factor(IL10$treatment, levels = c("Veh-LPS-5d", "Sema-LPS-5d"))
+
+asterisk.position <- max(IL10$IL10)
+
+# Mean and SEM
+IL10.summary <- aggregate(IL10[, c("IL10"), drop = F],
+                          by = list(IL10$treatment), FUN = mean, na.rm = T)
+colnames(IL10.summary) <- c("treatment", "mean")
+IL10.summary$SEM <- aggregate(IL10[, c("IL10"), drop = F], 
+                              by = list(IL10$treatment), 
+                              FUN = std.error, na.rm = T)$IL10
+IL10.summary$title <- "IL-10"
+
+# Plot
+pal <- c("#336666", "#A60FA6")
+IL10.plot <- ggplot(IL10.summary, aes(x = treatment, y = mean, fill = treatment)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IL10, aes(x = treatment, y = IL10),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IL10.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab(paste0(IL10.summary$title, (" (pg/ml)"))) +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 200, 50), limits = c(0, 210)) +
+  geom_signif(y_position = asterisk.position + 10, xmin = 1,
+  xmax = 2, tip_length = 0.01,
+  fontface = "bold", vjust = 0.2,
+  annotation = P.symbol,
+  size = 0.2, textsize = 1.55)
+
+IL10.plot
+```
+
+# Supplementary figure 7b
+```{r}
+options(scipen=10000)
+
+sema.exposure <- blood[which(blood$drug == "Sema-LPS"), c("time", "Sema")]
+colnames(sema.exposure)[2] <- "sema.exposure"
+sema.exposure$time <- factor(sema.exposure$time, levels = c("2h", "24h", "5d", "11d"))
+sema.exposure <- sema.exposure[!is.na(sema.exposure$sema.exposure),]
+
+# Mean and SEM
+sema.exposure.summary <- aggregate(sema.exposure[, c("sema.exposure"), drop = F],
+                          by = list(sema.exposure$time), FUN = mean, na.rm = T)
+colnames(sema.exposure.summary) <- c("time", "mean")
+sema.exposure.summary$SEM <- aggregate(sema.exposure[, c("sema.exposure"), drop = F], 
+                              by = list(sema.exposure$time), 
+                              FUN = std.error, na.rm = T)$sema.exposure
+# Plot
+pal <- "#A60FA6"
+sema.exposure.plot <- ggplot(sema.exposure.summary, aes(x = time, y = mean)) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3,
+           fill = pal) +
+  geom_point(data = sema.exposure, aes(x = time, y = sema.exposure),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = sema.exposure.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("Semaglutide exposure (pM)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none") +
+  scale_y_continuous(breaks = seq(0, 400000, 100000), limits = c(0, 400000))
+
+
+sema.exposure.plot
+ggsave("/projects/mludwig/hippo_GLP1/delete.png", height = 3, width = 2)  
+
+```
+
+
+# Supplementary figure 7c
+```{r}
+# Load BW data
+BW <- as.data.frame(t(read.xlsx("/projects/mludwig/hippo_GLP1/data/in_vivo/sc_BW.xlsx", rowNames = T)))
+colnames(BW)[1] <- "treatment"
+BW$treatment[grep("Grp\\. 1", BW$treatment)] <- "Veh-PBS" 
+BW$treatment[grep("Grp\\. 2", BW$treatment)] <- "Veh-LPS" 
+BW$treatment[grep("Grp\\. 3", BW$treatment)] <- "Sema-LPS" 
+BW <- BW[!(grepl("Surplus animal", BW$treatment)),]
+BW <- cbind(animal = rownames(BW), BW)
+rownames(BW) <- NULL
+
+
+treatment <- BW$treatment
+sample <- paste0(treatment, "_subject_", BW$animal)
+BW <- BW[,!(colnames(BW) %in% c("animal", "treatment"))]
+day <- colnames(BW)
+
+BW <- data.frame(apply(BW, 2, function(x) gsub("\\*", NA, x)))
+BW <- data.frame(apply(BW, 2, function(x) as.numeric(as.character(x))))
+colnames(BW) <- day
+rownames(BW) <- sample
+```
+
+
+```{r}
+# Mean and SEM
+BW.mean <- aggregate(BW, list(treatment), mean, na.rm = T)
+BW.sem <- aggregate(BW, list(treatment), std.error, na.rm = T)
+
+# Prepare data for plotting
+BW.mean <- melt(BW.mean, id.vars = c("Group.1"))
+BW.sem <- melt(BW.sem, id.vars = c("Group.1"))
+
+BW.summary <- cbind(BW.mean, BW.sem$value)
+colnames(BW.summary) <- c("treatment", "day", "BW", "SEM")
+
+BW.summary$treatment <- factor(BW.summary$treatment, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS"))
+BW.summary$day <- as.numeric(as.character(BW.summary$day))
+BW.summary <- BW.summary[!(is.na(BW.summary$SEM)),]
+
+# Plot
+pal <- c("#33CC66", "#336666", "#A60FA6")
+BW.plot <- ggplot(data = BW.summary, aes(x = day, y = BW, col = treatment, group = treatment)) +  
+  geom_errorbar(aes(ymin = BW, ymax = BW+SEM), width = 0.1) +
+  geom_line(size = 0.4) +
+  geom_point(size = 1) +
+  scale_x_continuous(name = "Time (days)", limits = c(-6, 28), 
+                     breaks = seq(-5, 30, 5)) +
+  scale_y_continuous(name = "Body weight (g)", limits = c(20, 27), 
+                   breaks = seq(0, 30, 2)) +
+  scale_color_manual(values = pal) +
+  theme_pubr(legend = "top") + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.text = element_text(hjust = 1, face = "bold", size = 6),
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0, 0, -10, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+  geom_text(aes(0, 26.4, label = "1st semaglutide dosis", vjust = -1),
+            colour = "black", size = 2, show.legend = F) +
+  geom_segment(aes(x = 0, y = 26.2, xend = 0, yend = 25.8),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_text(aes(16, 26.4, label = "LPS", vjust = -1),
+        colour = "black", size = 2, show.legend = F) + 
+  geom_segment(aes(x = 15, y = 26.2, xend = 15, yend = 25.8),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_segment(aes(x = 16, y = 26.2, xend = 16, yend = 25.8),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_segment(aes(x = 17, y = 26.2, xend = 17, yend = 25.8),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) 
+  
+BW.plot
+```
+
+# Supplementary figure 7d
+```{r}
+# Load FI data
+FI <- as.data.frame(t(read.xlsx("/projects/mludwig/hippo_GLP1/data/in_vivo/sc_FI.xlsx", rowNames = T)))
+colnames(FI)[1] <- "treatment"
+FI$treatment[grep("Grp\\. 1", FI$treatment)] <- "Veh-PBS" 
+FI$treatment[grep("Grp\\. 2", FI$treatment)] <- "Veh-LPS" 
+FI$treatment[grep("Grp\\. 3", FI$treatment)] <- "Sema-LPS" 
+FI <- FI[!(grepl("Surplus animal", FI$treatment)),]
+FI <- cbind(animal = rownames(FI), FI)
+rownames(FI) <- NULL
+
+treatment <- FI$treatment
+sample <- paste0(treatment, "_subject_", FI$animal)
+FI <- FI[,!(colnames(FI) %in% c("animal", "treatment"))]
+day <- colnames(FI)
+
+FI <- data.frame(apply(FI, 2, function(x) gsub("\\*", NA, x)))
+FI <- data.frame(apply(FI, 2, function(x) as.numeric(as.character(x))))
+colnames(FI) <- day
+rownames(FI) <- sample
+```
+
+
+```{r}
+# Mean and SEM
+FI.mean <- aggregate(FI, list(treatment), mean, na.rm = T)
+FI.sem <- aggregate(FI, list(treatment), std.error, na.rm = T)
+
+# Prepare data for plotting
+FI.mean <- melt(FI.mean, id.vars = c("Group.1"))
+FI.sem <- melt(FI.sem, id.vars = c("Group.1"))
+
+FI.summary <- cbind(FI.mean, FI.sem$value)
+colnames(FI.summary) <- c("treatment", "day", "FI", "SEM")
+
+FI.summary$treatment <- factor(FI.summary$treatment, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS"))
+FI.summary$day <- as.numeric(as.character(FI.summary$day))
+FI.summary <- FI.summary[!(is.na(FI.summary$SEM)),]
+
+# Plot
+pal <- c("#33CC66", "#336666", "#A60FA6")
+FI.plot <- ggplot(data = FI.summary, aes(x = day, y = FI, col = treatment, group = treatment)) +  
+  geom_errorbar(aes(ymin = FI, ymax = FI+SEM), width = 0.1) +
+  geom_line(size = 0.4) +
+  geom_point(size = 1) +
+  scale_x_continuous(name = "Time (days)", limits = c(-6, 27), 
+                     breaks = seq(-5, 30, 5)) +
+  scale_y_continuous(name = "Daily food intake (g)", limits = c(0, 6), 
+                   breaks = seq(0, 30, 2)) +
+  scale_color_manual(values = pal) +
+  theme_pubr(legend = "top") + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.text = element_text(hjust = 1, face = "bold", size = 6),
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.spacing.y = unit(-0.1, "cm"),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0, 0, -10, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+  geom_text(aes(0, 5.6, label = "1st semaglutide dosis", vjust = -1),
+            colour = "black", size = 2, show.legend = F) +
+  geom_segment(aes(x = 0, y = 5.5, xend = 0, yend = 5.2),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_text(aes(16, 5.6, label = "LPS", vjust = -1),
+        colour = "black", size = 2, show.legend = F) + 
+  geom_segment(aes(x = 15, y = 5.5, xend = 15, yend = 5.2),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_segment(aes(x = 16, y = 5.5, xend = 16, yend = 5.2),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) +
+  geom_segment(aes(x = 17, y = 5.5, xend = 17, yend = 5.2),
+               arrow = arrow(length = unit(0.08, "cm")),
+               show.legend = F, colour = "black", size = 0.05) 
+  
+FI.plot
+```
+
+# Combine all plots
+```{r}
+blank.plot <- ggplot() + geom_blank(aes(0.1, 0.1)) + 
+  cowplot::theme_nothing()
+
+
+plot1 <- plot_grid(TNFa.plot, INFg.plot, IL1b.plot, IL5.plot, 
+                   IL6.plot, CXCL1.plot, IL10.plot,
+                   ncol = 7, align = "h", axis = "tb",                   
+                   rel_widths = c(1, 1, 1, 1, 1, 1, 1)) 
+
+plot2 <- plot_grid(sema.exposure.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+                   BW.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0.1), "cm")), 
+                   FI.plot + theme(plot.margin = unit(c(0, 0, 0, 0.2), "cm")),
+                   ncol = 3, align = "h", axis = "tb",                   
+                   rel_widths = c(0.6, 1, 1)) 
+
+# Margin: top, right, bottom, and left
+sfig7 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")),
+                    plot2 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")),
+                    ncol = 1, align = "v",
+                    rel_heights = c(1, 1))
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure7_updated.png", sfig7, height = 120, width = 183,
+       units = "mm")
+
+```

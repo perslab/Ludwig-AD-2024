@@ -1,0 +1,900 @@
+---
+title: "sfigure1"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(lme4)
+library(emmeans)
+library(openxlsx)
+library(plotrix)
+library(cowplot)
+```
+
+# Load data
+```{r}
+invivo <- read.xlsx("/projects/mludwig/hippo_GLP1/data/in_vivo/bulk_in_vivo_data.xlsx", sheet = 1)
+invivo <- invivo[, 1:14]
+colnames(invivo) <- c("treatment", "study", "animal.ID", "diet",
+                      "group", "team", "dose", "dosing.method", 
+                      "comments", "BW_gram", "GFAP_percent_brain", "GFAP_percent_hippo",
+                      "IBA1_percent_brain", "IBA1_percent_hippo")
+
+IHC <- invivo[, c("treatment", "GFAP_percent_brain", "GFAP_percent_hippo",
+                  "IBA1_percent_brain", "IBA1_percent_hippo")]
+IHC$treatment <- gsub(" \\(19\\)", "-2d", IHC$treatment)
+IHC$treatment <- gsub(" \\(28\\)", "-11d", IHC$treatment)
+IHC$treatment <- gsub("Cmpd X \\+ LPS ", "Sema-LPS-", IHC$treatment)
+IHC$treatment <- gsub("Vehicle \\+ LPS ", "Veh-LPS-", IHC$treatment)
+IHC$treatment <- gsub("Cmpd X \\+ vehicle", "Sema-PBS", IHC$treatment)
+IHC$treatment <- gsub("Vehicle \\+ vehicle", "Veh-PBS", IHC$treatment)
+IHC$drug <- gsub("-2d|-11d", "", IHC$treatment)
+IHC$time <- gsub(".*-", "", IHC$treatment)
+
+IHC$GFAP_percent_brain <- as.numeric(IHC$GFAP_percent_brain)
+IHC$GFAP_percent_hippo <- as.numeric(IHC$GFAP_percent_hippo)
+IHC$IBA1_percent_brain <- as.numeric(IHC$IBA1_percent_brain)
+IHC$IBA1_percent_hippo <- as.numeric(IHC$IBA1_percent_hippo)
+```
+
+# Supplementary Figure 1a
+```{r}
+# Compute statistics for IBA1 percent in the hippocampus 
+IBA1.dose.hippo <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                       c("drug", "time", "IBA1_percent_hippo")] 
+IBA1.dose.hippo$drug <- factor(IBA1.dose.hippo$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0"))
+IBA1.dose.hippo$time <- factor(IBA1.dose.hippo$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(IBA1_percent_hippo ~ drug * time, data=IBA1.dose.hippo)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][2], 
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+
+
+```{r}
+# Plot hippocampus at day 2
+IBA1.dose.hippo.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "IBA1_percent_hippo")] 
+
+IBA1.dose.hippo.2d$drug <- factor(IBA1.dose.hippo.2d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+
+# Mean and SEM
+IBA1.dose.hippo.2d.summary <- aggregate(IBA1.dose.hippo.2d[, c("IBA1_percent_hippo"), drop = F], 
+                                        by = list(IBA1.dose.hippo.2d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.dose.hippo.2d.summary) <- c("drug", "mean")
+IBA1.dose.hippo.2d.summary$SEM <- aggregate(IBA1.dose.hippo.2d[, c("IBA1_percent_hippo"), drop = F], 
+                                            by = list(IBA1.dose.hippo.2d$drug), 
+                                            FUN = std.error, na.rm = T)$IBA1_percent_hippo
+IBA1.dose.hippo.2d.summary$title <- "Day 2: Hippocampus"
+
+asterisk.position <- max(na.omit(IBA1.dose.hippo.2d$IBA1_percent_hippo))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+IBA1.dose.hippo.2d.plot <- ggplot(IBA1.dose.hippo.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.dose.hippo.2d, aes(x = drug, y = IBA1_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.dose.hippo.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+              xmax = c(2,3,4,5), tip_length = 0.01,
+              fontface = "bold", vjust = 0.2,
+              annotation = p.symbol[c(1,2,3,4)],
+              size = 0.2, textsize = 1.55)
+
+
+IBA1.dose.hippo.2d.plot
+```
+```{r}
+# Plot hippocampus at day 11
+IBA1.dose.hippo.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "IBA1_percent_hippo")] 
+
+IBA1.dose.hippo.11d$drug <- factor(IBA1.dose.hippo.11d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+IBA1.dose.hippo.11d <- IBA1.dose.hippo.11d[!is.na(IBA1.dose.hippo.11d$IBA1_percent_hippo),]
+
+# Mean and SEM
+IBA1.dose.hippo.11d.summary <- aggregate(IBA1.dose.hippo.11d[, c("IBA1_percent_hippo"), drop = F], 
+                                        by = list(IBA1.dose.hippo.11d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.dose.hippo.11d.summary) <- c("drug", "mean")
+IBA1.dose.hippo.11d.summary$SEM <- aggregate(IBA1.dose.hippo.11d[, c("IBA1_percent_hippo"), drop = F], 
+                                            by = list(IBA1.dose.hippo.11d$drug), 
+                                            FUN = std.error, na.rm = T)$IBA1_percent_hippo
+IBA1.dose.hippo.11d.summary$title <- "Day 11: Hippocampus"
+
+asterisk.position <- max(na.omit(IBA1.dose.hippo.11d$IBA1_percent_hippo))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+IBA1.dose.hippo.11d.plot <- ggplot(IBA1.dose.hippo.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.dose.hippo.11d, aes(x = drug, y = IBA1_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.dose.hippo.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(5,6,7,8)],
+      size = 0.2, textsize = 1.55)
+
+IBA1.dose.hippo.11d.plot
+```
+
+```{r}
+# Compute statistics for IBA1 percent in the brain 
+IBA1.dose.brain <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                       c("drug", "time", "IBA1_percent_brain")] 
+IBA1.dose.brain$drug <- factor(IBA1.dose.brain$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0"))
+IBA1.dose.brain$time <- factor(IBA1.dose.brain$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(IBA1_percent_brain ~ drug * time, data=IBA1.dose.brain)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][2], 
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+```{r}
+# Plot brain at day 2
+IBA1.dose.brain.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "IBA1_percent_brain")] 
+
+IBA1.dose.brain.2d$drug <- factor(IBA1.dose.brain.2d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+
+# Mean and SEM
+IBA1.dose.brain.2d.summary <- aggregate(IBA1.dose.brain.2d[, c("IBA1_percent_brain"), drop = F], 
+                                        by = list(IBA1.dose.brain.2d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.dose.brain.2d.summary) <- c("drug", "mean")
+IBA1.dose.brain.2d.summary$SEM <- aggregate(IBA1.dose.brain.2d[, c("IBA1_percent_brain"), drop = F], 
+                                            by = list(IBA1.dose.brain.2d$drug), 
+                                            FUN = std.error, na.rm = T)$IBA1_percent_brain
+IBA1.dose.brain.2d.summary$title <- "Day 2: Entire brain"
+
+asterisk.position <- max(na.omit(IBA1.dose.brain.2d$IBA1_percent_brain))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+IBA1.dose.brain.2d.plot <- ggplot(IBA1.dose.brain.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.dose.brain.2d, aes(x = drug, y = IBA1_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.dose.brain.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(1,2,3,4)],
+      size = 0.2, textsize = 1.55)
+
+IBA1.dose.brain.2d.plot
+```
+
+```{r}
+# Plot brain at day 11
+IBA1.dose.brain.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "IBA1_percent_brain")] 
+
+IBA1.dose.brain.11d$drug <- factor(IBA1.dose.brain.11d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+IBA1.dose.brain.11d <- IBA1.dose.brain.11d[!is.na(IBA1.dose.brain.11d$IBA1_percent_brain),]
+
+# Mean and SEM
+IBA1.dose.brain.11d.summary <- aggregate(IBA1.dose.brain.11d[, c("IBA1_percent_brain"), drop = F], 
+                                        by = list(IBA1.dose.brain.11d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.dose.brain.11d.summary) <- c("drug", "mean")
+IBA1.dose.brain.11d.summary$SEM <- aggregate(IBA1.dose.brain.11d[, c("IBA1_percent_brain"), drop = F], 
+                                            by = list(IBA1.dose.brain.11d$drug), 
+                                            FUN = std.error, na.rm = T)$IBA1_percent_brain
+IBA1.dose.brain.11d.summary$title <- "Day 11: Entire brain"
+
+asterisk.position <- max(na.omit(IBA1.dose.brain.11d$IBA1_percent_brain))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+IBA1.dose.brain.11d.plot <- ggplot(IBA1.dose.brain.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.dose.brain.11d, aes(x = drug, y = IBA1_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.dose.brain.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(5,6,7,8)],
+      size = 0.2, textsize = 1.55)
+
+IBA1.dose.brain.11d.plot
+```
+
+# Supplementary Figure 1b
+```{r}
+# Compute statistics for GFAP percent in the hippocampus 
+GFAP.dose.hippo <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                       c("drug", "time", "GFAP_percent_hippo")] 
+GFAP.dose.hippo$drug <- factor(GFAP.dose.hippo$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0"))
+GFAP.dose.hippo$time <- factor(GFAP.dose.hippo$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(GFAP_percent_hippo ~ drug * time, data=GFAP.dose.hippo)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][2], 
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+```{r}
+# Plot hippocampus at day 2
+GFAP.dose.hippo.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "GFAP_percent_hippo")] 
+
+GFAP.dose.hippo.2d$drug <- factor(GFAP.dose.hippo.2d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+
+# Mean and SEM
+GFAP.dose.hippo.2d.summary <- aggregate(GFAP.dose.hippo.2d[, c("GFAP_percent_hippo"), drop = F], 
+                                        by = list(GFAP.dose.hippo.2d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.dose.hippo.2d.summary) <- c("drug", "mean")
+GFAP.dose.hippo.2d.summary$SEM <- aggregate(GFAP.dose.hippo.2d[, c("GFAP_percent_hippo"), drop = F], 
+                                            by = list(GFAP.dose.hippo.2d$drug), 
+                                            FUN = std.error, na.rm = T)$GFAP_percent_hippo
+GFAP.dose.hippo.2d.summary$title <- "Day 2: Hippocampus"
+
+asterisk.position <- max(na.omit(GFAP.dose.hippo.2d$GFAP_percent_hippo))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+GFAP.dose.hippo.2d.plot <- ggplot(GFAP.dose.hippo.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.dose.hippo.2d, aes(x = drug, y = GFAP_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.dose.hippo.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(1,2,3,4)],
+      size = 0.2, textsize = 1.55)
+
+GFAP.dose.hippo.2d.plot
+```
+
+
+```{r}
+# Plot hippocampus at day 11
+GFAP.dose.hippo.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "GFAP_percent_hippo")] 
+
+GFAP.dose.hippo.11d$drug <- factor(GFAP.dose.hippo.11d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+GFAP.dose.hippo.11d <- GFAP.dose.hippo.11d[!is.na(GFAP.dose.hippo.11d$GFAP_percent_hippo),]
+
+# Mean and SEM
+GFAP.dose.hippo.11d.summary <- aggregate(GFAP.dose.hippo.11d[, c("GFAP_percent_hippo"), drop = F], 
+                                        by = list(GFAP.dose.hippo.11d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.dose.hippo.11d.summary) <- c("drug", "mean")
+GFAP.dose.hippo.11d.summary$SEM <- aggregate(GFAP.dose.hippo.11d[, c("GFAP_percent_hippo"), drop = F], 
+                                            by = list(GFAP.dose.hippo.11d$drug), 
+                                            FUN = std.error, na.rm = T)$GFAP_percent_hippo
+GFAP.dose.hippo.11d.summary$title <- "Day 11: Hippocampus"
+
+asterisk.position <- max(na.omit(GFAP.dose.hippo.11d$GFAP_percent_hippo))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+GFAP.dose.hippo.11d.plot <- ggplot(GFAP.dose.hippo.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.dose.hippo.11d, aes(x = drug, y = GFAP_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.dose.hippo.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(0,1,2,3), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(5,6,7,8)],
+      size = 0.2, textsize = 1.55)
+
+GFAP.dose.hippo.11d.plot
+```
+
+
+```{r}
+# Compute statistics for GFAP percent in the brain 
+GFAP.dose.brain <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                       c("drug", "time", "GFAP_percent_brain")] 
+GFAP.dose.brain$drug <- factor(GFAP.dose.brain$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", "Veh-LPS-0.5", "Veh-LPS-1.0"))
+GFAP.dose.brain$time <- factor(GFAP.dose.brain$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(GFAP_percent_brain ~ drug * time, data=GFAP.dose.brain)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.05)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.1)")][2],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-0.5)")][2], 
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+```{r}
+# Plot brain at day 2
+GFAP.dose.brain.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "GFAP_percent_brain")] 
+
+GFAP.dose.brain.2d$drug <- factor(GFAP.dose.brain.2d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+
+# Mean and SEM
+GFAP.dose.brain.2d.summary <- aggregate(GFAP.dose.brain.2d[, c("GFAP_percent_brain"), drop = F], 
+                                        by = list(GFAP.dose.brain.2d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.dose.brain.2d.summary) <- c("drug", "mean")
+GFAP.dose.brain.2d.summary$SEM <- aggregate(GFAP.dose.brain.2d[, c("GFAP_percent_brain"), drop = F], 
+                                            by = list(GFAP.dose.brain.2d$drug), 
+                                            FUN = std.error, na.rm = T)$GFAP_percent_brain
+GFAP.dose.brain.2d.summary$title <- "Day 2: Entire brain"
+
+asterisk.position <- max(na.omit(GFAP.dose.brain.2d$GFAP_percent_brain))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+GFAP.dose.brain.2d.plot <- ggplot(GFAP.dose.brain.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.dose.brain.2d, aes(x = drug, y = GFAP_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.dose.brain.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(1,2,3,4)],
+      size = 0.2, textsize = 1.55)
+
+GFAP.dose.brain.2d.plot
+```
+
+```{r}
+# Plot brain at day 11
+GFAP.dose.brain.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                   "Veh-LPS-0.5", "Veh-LPS-1.0")), 
+                          c("drug", "GFAP_percent_brain")] 
+
+GFAP.dose.brain.11d$drug <- factor(GFAP.dose.brain.11d$drug, levels = c("Veh-PBS", "Veh-LPS-0.05", "Veh-LPS-0.1", 
+                                                                      "Veh-LPS-0.5", "Veh-LPS-1.0"))
+GFAP.dose.brain.11d <- GFAP.dose.brain.11d[!is.na(GFAP.dose.brain.11d$GFAP_percent_brain),]
+
+# Mean and SEM
+GFAP.dose.brain.11d.summary <- aggregate(GFAP.dose.brain.11d[, c("GFAP_percent_brain"), drop = F], 
+                                        by = list(GFAP.dose.brain.11d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.dose.brain.11d.summary) <- c("drug", "mean")
+GFAP.dose.brain.11d.summary$SEM <- aggregate(GFAP.dose.brain.11d[, c("GFAP_percent_brain"), drop = F], 
+                                            by = list(GFAP.dose.brain.11d$drug), 
+                                            FUN = std.error, na.rm = T)$GFAP_percent_brain
+GFAP.dose.brain.11d.summary$title <- "Day 11: Entire brain"
+
+asterisk.position <- max(na.omit(GFAP.dose.brain.11d$GFAP_percent_brain))
+
+# Plot
+pal <- c("#33CC66", "#87C3C3", "#5FAFAF", "#478D8D", "#336666")
+GFAP.dose.brain.11d.plot <- ggplot(GFAP.dose.brain.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.dose.brain.11d, aes(x = drug, y = GFAP_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.dose.brain.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 0.1), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + c(-2,-1,0,1), xmin = c(1,1,1,1),
+      xmax = c(2,3,4,5), tip_length = 0.01,
+      fontface = "bold", vjust = 0.2,
+      annotation = p.symbol[c(5,6,7,8)],
+      size = 0.2, textsize = 1.55)
+
+GFAP.dose.brain.11d.plot
+```
+
+
+# Supplementary Figure 1c
+```{r}
+# Compute statistics for GFAP percent in the hippocampus 
+GFAP.hippo <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                  c("drug", "time", "GFAP_percent_hippo")] 
+GFAP.hippo$drug <- factor(GFAP.hippo$drug, levels = c("Veh-PBS","Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.hippo$time <- factor(GFAP.hippo$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(GFAP_percent_hippo ~ drug * time, data=GFAP.hippo)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+
+```{r}
+# Plot hippocampus at day 2
+GFAP.hippo.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "GFAP_percent_hippo")] 
+GFAP.hippo.2d$drug <- factor(GFAP.hippo.2d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.hippo.2d <- GFAP.hippo.2d[!(is.na(GFAP.hippo.2d$GFAP_percent_hippo)),]
+
+# Mean and SEM
+GFAP.hippo.2d.summary <- aggregate(GFAP.hippo.2d[, c("GFAP_percent_hippo"), drop = F], by = list(GFAP.hippo.2d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.hippo.2d.summary) <- c("drug", "mean")
+GFAP.hippo.2d.summary$SEM <- aggregate(GFAP.hippo.2d[, c("GFAP_percent_hippo"), drop = F], by = list(GFAP.hippo.2d$drug), FUN = std.error, na.rm = T)$GFAP_percent_hippo
+GFAP.hippo.2d.summary$title <- "Day 2: Hippocampus"
+
+asterisk.position <- max(na.omit(GFAP.hippo.2d$GFAP_percent_hippo[which(GFAP.hippo.2d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+GFAP.hippo.2d.plot <- ggplot(GFAP.hippo.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.hippo.2d, aes(x = drug, y = GFAP_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.hippo.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = c(1, 3.01), 
+              xmax = c(2.99, 4), tip_length = 0.01, 
+              fontface = "bold", vjust = 0.2,
+              annotation = p.symbol[c(1,2)],
+              size = 0.2, textsize = 1.55) 
+
+GFAP.hippo.2d.plot
+```
+
+
+```{r}
+# Plot hippocampus at day 11
+GFAP.hippo.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                      c("drug", "GFAP_percent_hippo")] 
+GFAP.hippo.11d$drug <- factor(GFAP.hippo.11d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.hippo.11d <- GFAP.hippo.11d[!(is.na(GFAP.hippo.11d$GFAP_percent_hippo)),]
+
+# Mean and SEM
+GFAP.hippo.11d.summary <- aggregate(GFAP.hippo.11d[, c("GFAP_percent_hippo"), drop = F], by = list(GFAP.hippo.11d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.hippo.11d.summary) <- c("drug", "mean")
+GFAP.hippo.11d.summary$SEM <- aggregate(GFAP.hippo.11d[, c("GFAP_percent_hippo"), drop = F], by = list(GFAP.hippo.11d$drug), FUN = std.error, na.rm = T)$GFAP_percent_hippo
+GFAP.hippo.11d.summary$title <- "Day 11: Hippocampus"
+
+asterisk.position <- max(na.omit(GFAP.hippo.11d$GFAP_percent_hippo[which(GFAP.hippo.11d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+GFAP.hippo.11d.plot <- ggplot(GFAP.hippo.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.hippo.11d, aes(x = drug, y = GFAP_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.hippo.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = c(1, 3.01), 
+              xmax = c(2.99, 4), tip_length = 0.01, 
+              fontface = "bold", vjust = 0.2,
+              annotation = p.symbol[c(3,4)],
+              size = 0.2, textsize = 1.55) 
+
+GFAP.hippo.11d.plot
+```
+
+```{r}
+# Compute statistics for GFAP percent in the brain 
+GFAP.brain <- IHC[which(IHC$drug %in% c("Veh-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                  c("drug", "time", "GFAP_percent_brain")] 
+GFAP.brain$drug <- factor(GFAP.brain$drug, levels = c("Veh-PBS","Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.brain$time <- factor(GFAP.brain$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(GFAP_percent_brain ~ drug * time, data=GFAP.brain)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-PBS) - (Veh-LPS-1.0)")][2],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][2])
+           
+p.symbol <- rep("NS", 8) 
+p.symbol[which(p.adj <= 0.05)] <- "*"
+p.symbol[which(p.adj <= 0.01)] <- "**"
+p.symbol[which(p.adj <= 0.001)] <- "***"
+```
+
+```{r}
+# Plot brain at day 2
+GFAP.brain.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "GFAP_percent_brain")] 
+GFAP.brain.2d$drug <- factor(GFAP.brain.2d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.brain.2d <- GFAP.brain.2d[!(is.na(GFAP.brain.2d$GFAP_percent_brain)),]
+
+# Mean and SEM
+GFAP.brain.2d.summary <- aggregate(GFAP.brain.2d[, c("GFAP_percent_brain"), drop = F], by = list(GFAP.brain.2d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.brain.2d.summary) <- c("drug", "mean")
+GFAP.brain.2d.summary$SEM <- aggregate(GFAP.brain.2d[, c("GFAP_percent_brain"), drop = F], by = list(GFAP.brain.2d$drug), FUN = std.error, na.rm = T)$GFAP_percent_brain
+GFAP.brain.2d.summary$title <- "Day 2: Entire brain"
+
+asterisk.position <- max(na.omit(GFAP.brain.2d$GFAP_percent_brain[which(GFAP.brain.2d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+GFAP.brain.2d.plot <- ggplot(GFAP.brain.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.brain.2d, aes(x = drug, y = GFAP_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.brain.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal)+
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = c(1, 3.01), 
+              xmax = c(2.99, 4), tip_length = 0.01, 
+              fontface = "bold", vjust = 0.2, 
+              annotation = p.symbol[c(1,2)],
+              size = 0.2, textsize = 1.55) 
+
+GFAP.brain.2d.plot
+```
+
+
+```{r}
+# Plot brain at day 11
+GFAP.brain.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "GFAP_percent_brain")] 
+GFAP.brain.11d$drug <- factor(GFAP.brain.11d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+GFAP.brain.11d <- GFAP.brain.11d[!(is.na(GFAP.brain.11d$GFAP_percent_brain)),]
+
+# Mean and SEM
+GFAP.brain.11d.summary <- aggregate(GFAP.brain.11d[, c("GFAP_percent_brain"), drop = F], by = list(GFAP.brain.11d$drug), FUN = mean, na.rm = T)
+colnames(GFAP.brain.11d.summary) <- c("drug", "mean")
+GFAP.brain.11d.summary$SEM <- aggregate(GFAP.brain.11d[, c("GFAP_percent_brain"), drop = F], by = list(GFAP.brain.11d$drug), FUN = std.error, na.rm = T)$GFAP_percent_brain
+GFAP.brain.11d.summary$title <- "Day 11: Entire brain"
+
+asterisk.position <- max(na.omit(GFAP.brain.11d$GFAP_percent_brain[which(GFAP.brain.11d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+GFAP.brain.11d.plot <- ggplot(GFAP.brain.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = GFAP.brain.11d, aes(x = drug, y = GFAP_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = GFAP.brain.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("GFAP (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = c(1, 3.01), 
+              xmax = c(2.99, 4), tip_length = 0.01, 
+              fontface = "bold", vjust = 0.2,
+              annotation = p.symbol[c(3,4)],
+              size = 0.2, textsize = 1.55) 
+
+GFAP.brain.11d.plot
+```
+
+
+# Combine all plots
+```{r}
+# Supplementary figure 1a
+plot1 <- plot_grid(IBA1.dose.hippo.2d.plot, IBA1.dose.hippo.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot2 <- plot_grid(IBA1.dose.brain.2d.plot, IBA1.dose.brain.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot3 <- plot_grid(plot1, plot2,
+                   ncol = 1, align = "v",
+                   rel_heights = c(1, 1)) 
+
+# Supplementary figure 1b'
+plot4 <- plot_grid(GFAP.dose.hippo.2d.plot, GFAP.dose.hippo.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot5 <- plot_grid(GFAP.dose.brain.2d.plot, GFAP.dose.brain.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot6 <- plot_grid(plot4, plot5,
+                   ncol = 1, align = "v",
+                   rel_heights = c(1, 1)) 
+
+
+# Supplementary figure 1b
+plot7 <- plot_grid(GFAP.hippo.2d.plot, GFAP.hippo.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot8 <- plot_grid(GFAP.brain.2d.plot, GFAP.brain.11d.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
+plot9 <- plot_grid(plot7, plot8,
+                   ncol = 1, align = "v",
+                   rel_heights = c(1, 1)) 
+
+# Margin: top, right, bottom, and left
+sfig1 <- plot_grid(plot3 + theme(plot.margin = unit(c(0, 0.2, 0, 0), "cm")), 
+                   plot6 + theme(plot.margin = unit(c(0, 0.1, 0, 0.1), "cm")), 
+                   plot9 + theme(plot.margin = unit(c(0.0, 0, 0, 0.2), "cm")), 
+                   ncol = 3, align = "h",
+                   rel_widths = c(1, 1, 1)) 
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure1.png", sfig1, height = 120, width = 183,
+       units = "mm")
+```
+
+

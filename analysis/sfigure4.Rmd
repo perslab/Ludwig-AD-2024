@@ -1,0 +1,227 @@
+---
+title: "sfigure4"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(dplyr)
+library(tidyverse)
+library(reshape2)
+library(cowplot)
+```
+
+```{r}
+lmer.list <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/lmer_hippo_glia_regulons.rds")
+```
+
+# Supplementary figure 4a
+```{r}
+# Identify pericytes1 regulons that are diferentially activated by both LPS and semaglutide treatment
+lmer.pericytes1 <- lmer.list[["Pericytes1"]]
+idx <- which(lmer.pericytes1$p.adj.veh.LPS < 0.05 & lmer.pericytes1$p.adj.sema.LPS < 0.05)
+
+lmer.pericytes1.veh <- lmer.pericytes1[idx, c("regulon", "beta.veh.LPS", "SE.veh.LPS")]
+lmer.pericytes1.veh$comparison <- "Veh-LPS vs. veh-PBS"
+
+lmer.pericytes1.LPS <- lmer.pericytes1[idx, c("regulon", "beta.sema.LPS", "SE.sema.LPS")]
+lmer.pericytes1.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+
+lmer.pericytes1.veh$delta <- lmer.pericytes1.LPS$delta <- lmer.pericytes1.veh$beta - lmer.pericytes1.LPS$beta
+
+colnames(lmer.pericytes1.veh) <- colnames(lmer.pericytes1.LPS) <- c("regulon", "beta", "SE", "comparison", "delta")
+lmer.pericytes1 <- rbind(lmer.pericytes1.veh, lmer.pericytes1.LPS)
+
+lmer.pericytes1$comparison <- factor(lmer.pericytes1$comparison, 
+                                    levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+
+
+lmer.pericytes1$regulon <- factor(lmer.pericytes1$regulon, levels = lmer.pericytes1.veh$regulon[order(lmer.pericytes1.veh$delta, decreasing = T)])
+```
+
+```{r}
+# Plot
+regulons.pericytes1.plot <- ggplot(lmer.pericytes1, aes(x = regulon, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=5, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),        
+        axis.text.x = element_text(size=5, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=5, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0.5), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  ylab(expression(bold(paste(beta)))) + xlab("") +
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1)
+regulons.pericytes1.plot
+```
+
+# Supplementary figure 4b
+```{r}
+# Identify endothelial cell regulons that are diferentially activated by both LPS and semaglutide treatment
+lmer.endothelial.cells <- lmer.list[["Endothelial_cells"]]
+idx <- which(lmer.endothelial.cells$p.adj.veh.LPS < 0.05 & lmer.endothelial.cells$p.adj.sema.LPS < 0.05)
+
+lmer.endothelial.cells.veh <- lmer.endothelial.cells[idx, c("regulon", "beta.veh.LPS", "SE.veh.LPS")]
+lmer.endothelial.cells.veh$comparison <- "Veh-LPS vs. veh-PBS"
+
+lmer.endothelial.cells.LPS <- lmer.endothelial.cells[idx, c("regulon", "beta.sema.LPS", "SE.sema.LPS")]
+lmer.endothelial.cells.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+
+lmer.endothelial.cells.veh$delta <- lmer.endothelial.cells.LPS$delta <- lmer.endothelial.cells.veh$beta - lmer.endothelial.cells.LPS$beta
+
+colnames(lmer.endothelial.cells.veh) <- colnames(lmer.endothelial.cells.LPS) <- c("regulon", "beta", "SE", "comparison", "delta")
+lmer.endothelial.cells <- rbind(lmer.endothelial.cells.veh, lmer.endothelial.cells.LPS)
+
+lmer.endothelial.cells$comparison <- factor(lmer.endothelial.cells$comparison, 
+                                    levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+
+
+lmer.endothelial.cells$regulon <- factor(lmer.endothelial.cells$regulon, levels = lmer.endothelial.cells.veh$regulon[order(lmer.endothelial.cells.veh$delta, decreasing = T)])
+```
+
+```{r}
+# Plot
+regulons.endothelial.cells.plot <- ggplot(lmer.endothelial.cells, aes(x = regulon, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=5, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        axis.text.x = element_text(size=5, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=5, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0.5), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  ylab(expression(bold(paste(beta)))) + xlab("") +
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1)
+regulons.endothelial.cells.plot
+```
+
+# Supplementary figure 4c
+```{r}
+# Identify astrocyte regulons that are diferentially activated by both LPS and semaglutide treatment
+lmer.astrocytes <- lmer.list[["Astrocytes"]]
+idx <- which(lmer.astrocytes$p.adj.veh.LPS < 0.05 & lmer.astrocytes$p.adj.sema.LPS < 0.05)
+
+lmer.astrocytes.veh <- lmer.astrocytes[idx, c("regulon", "beta.veh.LPS", "SE.veh.LPS")]
+lmer.astrocytes.veh$comparison <- "Veh-LPS vs. veh-PBS"
+
+lmer.astrocytes.LPS <- lmer.astrocytes[idx, c("regulon", "beta.sema.LPS", "SE.sema.LPS")]
+lmer.astrocytes.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+
+lmer.astrocytes.veh$delta <- lmer.astrocytes.LPS$delta <- lmer.astrocytes.veh$beta - lmer.astrocytes.LPS$beta
+
+colnames(lmer.astrocytes.veh) <- colnames(lmer.astrocytes.LPS) <- c("regulon", "beta", "SE", "comparison", "delta")
+lmer.astrocytes <- rbind(lmer.astrocytes.veh, lmer.astrocytes.LPS)
+
+lmer.astrocytes$comparison <- factor(lmer.astrocytes$comparison, 
+                                    levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+
+
+lmer.astrocytes$regulon <- factor(lmer.astrocytes$regulon, levels = lmer.astrocytes.veh$regulon[order(lmer.astrocytes.veh$delta, decreasing = T)])
+```
+
+
+```{r}
+# Plot
+regulons.astrocytes.plot <- ggplot(lmer.astrocytes, aes(x = regulon, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=5, face="bold",
+                                    margin=unit(c(0,0,0,0), "cm")),
+        axis.text.x = element_text(size=5, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=5, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0.5), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  ylab(expression(bold(paste(beta)))) + xlab("") +
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1)
+regulons.astrocytes.plot
+```
+
+# Combine all plots
+```{r}
+# Margin: top, right, bottom, and left
+sfig4 <- plot_grid(regulons.pericytes1.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+                   regulons.endothelial.cells.plot + theme(plot.margin = unit(c(0, 0.05, 0, 0.05), "cm")), 
+                   regulons.astrocytes.plot + theme(plot.margin = unit(c(0.0, 0, 0, 0.1), "cm")), 
+                   ncol = 3, align = "h",
+                   rel_widths = c(1, 1.8, 0.8)) 
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure4.png", sfig4, height = 60, width = 183,
+       units = "mm")
+
+```
+
+
+# Combine all plots
+```{r}
+blank.plot <- ggplot() + geom_blank(aes(0.1,0.1)) + 
+  cowplot::theme_nothing()
+
+plot1 <- plot_grid(blank.plot, get_legend(regulons.endothelial.cells.plot), blank.plot,
+                   ncol = 3, align = "h",                   
+                   rel_widths = c(1.1, 1, 0.9)) 
+
+# Margin: top, right, bottom, and left
+plot2 <- plot_grid(regulons.pericytes1.plot + theme(legend.position = "none",
+                                                    plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+                   regulons.endothelial.cells.plot + theme(legend.position = "none",
+                                                           plot.margin = unit(c(0, 0.05, 0, 0.05), "cm")), 
+                   regulons.astrocytes.plot + theme(legend.position = "none",
+                                                    plot.margin = unit(c(0.0, 0, 0, 0.1), "cm")), 
+                   ncol = 3, align = "h",
+                   rel_widths = c(1, 1.8, 0.8)) 
+
+sfig4 <- plot_grid(plot1, plot2,
+                   ncol = 1, align = "v", axis = "lr",
+                   rel_heights = c(0.2, 1))
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure4.png", sfig4, height = 60, width = 183,
+       units = "mm")
+
+```
+
+plot1 <- plot_grid(frag.size.plot, AP.umap.plot, neurons.umap.plot,
+                   ncol = 3, align = "h",
+                   rel_widths = c(0.8,1,1)) 
+
+plot2 <- plot_grid(get_legend(glu4.M1.motif.plot), 
+                   glu4.M1.motif.plot + theme(legend.position = "none"),
+                   ncol = 1, align = "lr",
+                   rel_heights = c(0.08, 1))

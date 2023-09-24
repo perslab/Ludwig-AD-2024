@@ -1,0 +1,328 @@
+---
+title: "sfigure3"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggrepel)
+library(ggpubr)
+library(cowplot)
+library(RColorBrewer)
+library(openxlsx)
+```
+
+# Load Seurat objects
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+hippo.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj_labels.rds")
+```
+
+# Supplementary figure 3a 
+```{r}
+# Define canonical glial cell type markers 
+glia.markers.vector <- c("Gfap", "Bcas1", "C1ql1", "Slc2a1", "Aif1", "Mobp", "S100a9", "Kcnj8", "Col1a1")
+
+# Plot
+set.seed(15)
+n.cols <- length(unique(hippo.glia$cell.type2))
+pal <- colorRampPalette(brewer.pal(12, "Accent"))(n.cols)
+pal <- sample(pal)
+
+for (i in 1:length(glia.markers.vector)) {
+
+  gene <- glia.markers.vector[i]
+  gene.expr <- data.frame(expression = hippo.glia@assays$SCT@data[gene,], 
+                          cell.type = hippo.glia$cell.type2)
+
+  if (i < length(glia.markers.vector)) {
+    
+    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, 
+                                      fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_blank(),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            axis.ticks.x = element_blank(),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+  }
+  
+  else {
+    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+    
+  }
+    assign(paste0("violin.plot", i), violin.plot)
+}
+
+# Combine plots
+glia.marker.plot <- plot_grid(violin.plot1, violin.plot2, violin.plot3,
+                              violin.plot4, violin.plot5, violin.plot6,
+                              violin.plot7, violin.plot8, violin.plot9,
+          align = "v", ncol = 1, rel_heights = c(rep(0.8,8), 2.5))
+glia.marker.plot
+```
+
+
+# Supplementary figure 3d
+```{r}
+posner.predictions <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/Posner_predictions.rds")
+posner.predictions <- posner.predictions[which(rownames(posner.predictions) %in% colnames(hippo.glia)[which(hippo.glia$cell.type2 == "Neutrophils")]),]
+
+
+posner.predictions.summary <- as.data.frame(table(posner.predictions$predicted.id))
+colnames(posner.predictions.summary) <- c("cell.type", "frequency")
+posner.predictions.summary$percent <- posner.predictions.summary$frequency / sum(posner.predictions.summary$frequency) * 100 
+posner.predictions.summary$cell.type <- factor(posner.predictions.summary$cell.type, 
+                                               levels = posner.predictions.summary$cell.type[order(posner.predictions.summary$percent, decreasing = T)])
+
+# Plot
+neutrophil.plot <- ggplot(posner.predictions.summary, aes(x = cell.type, y = percent)) +
+  geom_bar(position = position_dodge(), stat="identity", colour="black", width=0.8, size=0.3, fill = "#E1B8A8") +
+  theme_pubr(legend = "top") +
+  theme(axis.text.y = element_text(size=6, face="bold"),
+        axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0.1, 0, -0.25, 0.35), "cm"),
+        plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) +
+  xlab("") + ylab("Predicted immune cell type (%)")
+neutrophil.plot
+```
+
+
+# Supplementary figure 3c
+```{r}
+neuron.markers.vector <- c("Gad2", "Slc17a7", gsub("_.*", "", sort(unique(hippo.neurons$cell.type2)))) 
+
+# Plot 
+set.seed(2)
+n.cols <- length(unique(hippo.neurons$cell.type2))
+pal <- sample(colorRampPalette(brewer.pal(12, "Accent"))(n.cols))
+
+for (i in 1:length(neuron.markers.vector)) {
+
+  gene <- neuron.markers.vector[i]
+  gene.expr <- data.frame(expression = hippo.neurons@assays$SCT@data[gene,], 
+                          cell.type = hippo.neurons$cell.type2)
+
+  if (i < length(neuron.markers.vector)) {
+    
+    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, 
+                                      fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_blank(),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            axis.ticks.x = element_blank(),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0.5), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+  }
+  
+  else {
+    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0.5), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+    
+  }
+    assign(paste0("violin.plot", i), violin.plot)
+}
+
+# Combine plots
+neuron.marker.plot <- plot_grid(violin.plot1, violin.plot2, violin.plot3,
+                                violin.plot4, violin.plot5, violin.plot6, 
+                                violin.plot7, violin.plot8, violin.plot9,
+                                violin.plot10, violin.plot11, violin.plot12,
+                                violin.plot13, 
+          align = "v", ncol = 1, rel_heights = c(rep(0.8, 12), 3.2))
+
+neuron.marker.plot
+```
+
+
+# Supplementary figure 3d
+```{r}
+set.seed(15)
+n.cols <- length(unique(hippo.glia$cell.type2))
+pal.glia <- sample(colorRampPalette(brewer.pal(12, "Accent"))(n.cols))
+
+set.seed(2)
+n.cols <- length(unique(hippo.neurons$cell.type2))
+pal.neurons <- sample(colorRampPalette(brewer.pal(12, "Accent"))(n.cols))
+
+pal <- c(pal.glia, pal.neurons)                         
+
+# Plot 
+gene <- "Glp1r"
+gene.expr <- rbind(data.frame(expression = hippo.neurons@assays$SCT@data[gene,], 
+                              cell.type = hippo.neurons$cell.type2), 
+                   data.frame(expression = hippo.glia@assays$SCT@data[gene,], 
+                              cell.type = hippo.glia$cell.type2))
+gene.expr$cell.type <- factor(gene.expr$cell.type, levels = c(levels(hippo.glia$cell.type2),
+                                                              sort(unique(hippo.neurons$cell.type2))))                
+
+Glp1r.expr.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0.2), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+    
+Glp1r.expr.plot
+```
+
+
+# Supplementary figure 3e
+```{r}
+# Load TAP-seq data
+TAPseq.assay <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_TAP-seq_assay.rds")
+
+# Load hippocampal data
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+
+hippo.TAPseq <- subset(hippo, cells = colnames(TAPseq.assay))
+hippo.TAPseq[["TAPseq"]] <- TAPseq.assay
+```
+
+```{r}
+set.seed(15)
+n.cols <- length(unique(hippo.glia$cell.type2))
+pal.glia <- sample(colorRampPalette(brewer.pal(12, "Accent"))(n.cols))
+
+set.seed(2)
+n.cols <- length(unique(hippo.neurons$cell.type2))
+pal.neurons <- sample(colorRampPalette(brewer.pal(12, "Accent"))(n.cols))
+
+pal <- c(pal.glia, pal.neurons)                         
+
+# Plot 
+gene <- "Glp1r"
+gene.expr <- data.frame(expression = hippo.TAPseq@assays$TAPseq@counts[gene,], 
+                              cell.type = hippo.TAPseq$cell.type2)
+gene.expr$cell.type <- factor(gene.expr$cell.type, levels = c(levels(hippo.glia$cell.type2),
+                                                              sort(unique(hippo.neurons$cell.type2))))                
+            
+
+Glp1r.TAPseq.expr.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
+      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.4),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
+                                         margin=unit(c(0,0,0,0), "cm")),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-.5,0.2), "cm")) +
+      xlab("") + ylab(gene) + 
+      scale_fill_manual(values = pal) + 
+      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
+    
+Glp1r.TAPseq.expr.plot
+```
+
+
+# Combine all plots
+```{r}
+blank.plot <- ggplot() + geom_blank(aes(0.1,0.1)) + 
+  cowplot::theme_nothing()
+
+plot1 <- plot_grid(blank.plot, glia.marker.plot, blank.plot,
+                   ncol = 1, align = "v",                   
+                   rel_heights = c(0.1, 1, 0.1)) 
+
+plot2 <- plot_grid(blank.plot, neutrophil.plot, blank.plot,
+                   ncol = 1, align = "v",                   
+                   rel_heights = c(0.4, 0.6, 0.4)) 
+
+plot3 <- plot_grid(plot1, plot2, neuron.marker.plot,
+                   ncol = 3, align = "h",                   
+                   rel_widths = c(0.1, 0.1, 0.1))
+
+plot4 <- plot_grid(Glp1r.expr.plot + theme(plot.margin = unit(c(0, 0, 0, 0.4), "cm")), 
+                   Glp1r.TAPseq.expr.plot,
+                   ncol = 2, align = "h",                   
+                   rel_widths =  c(1, 1))
+
+
+# Margin: top, right, bottom, and left
+sfig3 <- plot_grid(plot3 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")), 
+                   plot4 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")), 
+                   ncol = 1, align = "v",                   
+                   rel_heights = c(1, 0.35))
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure3.png", sfig3, height = 160, width = 183,
+       units = "mm")
+
+```
