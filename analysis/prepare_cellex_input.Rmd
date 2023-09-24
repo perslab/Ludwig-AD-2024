@@ -1,0 +1,142 @@
+---
+title: "prepare_cellex_input"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(data.table)
+```
+
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj.rds")
+hippo.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj.rds")
+```
+
+# Input all cells (hg)
+```{r}
+human.mouse.mapping <- read.csv("/projects/mludwig/hippo_GLP1/data/gene_info/human_mouse_mapping.csv")
+
+# Map mouse gene name to human gene ID
+mapping <- human.mouse.mapping[, c("human.gene.ID", "mouse.gene.name")]
+mapping <- subset(mapping, complete.cases(mapping))
+mapping <- mapping[mapping$human.gene.ID != "" & mapping$mouse.gene.name != "",]
+mapping <- mapping[!(duplicated(mapping)),]
+duplicated.human.gene.ID <- mapping$human.gene.ID[duplicated(mapping$human.gene.ID)]
+duplicated.mouse.gene.name <- mapping$mouse.gene.name[duplicated(mapping$mouse.gene.name)]
+# Keep only 1-1 mapping
+# mapping <- mapping[!(mapping$human.gene.ID %in% duplicated.human.gene.ID),]
+mapping <- mapping[!(mapping$mouse.gene.name %in% duplicated.mouse.gene.name),]
+
+# Expression data
+expr.input1 <- data.frame(hippo.glia@assays$RNA@counts[, 1:50000])
+expr.input2 <- data.frame(hippo.glia@assays$RNA@counts[, 50001:ncol(hippo.glia)])
+
+expr.input3 <- data.frame(hippo.neurons@assays$RNA@counts[, 1:50000])
+expr.input4 <- data.frame(hippo.neurons@assays$RNA@counts[, 50001:ncol(hippo.neurons)])
+
+expr.input <- cbind(rownames(expr.input1), expr.input1, expr.input2, expr.input3, expr.input4) 
+colnames(expr.input)[1] <- "gene"
+
+# Map to human genes
+expr.input$gene <- mapping$human.gene.ID[match(expr.input$gene, mapping$mouse.gene.name)]
+# expr.input <- expr.input[!is.na(expr.input$gene),]
+
+tmp <- within(expr.input, rm("gene"))
+expr.input <- aggregate(tmp, by=list(expr.input$gene), FUN = sum, na.rm = TRUE)
+rm(tmp)
+colnames(expr.input)[1] <- "gene"
+
+# Meta data
+meta.input <- rbind(hippo.glia@meta.data[, "cell.type", drop = F], 
+                    hippo.neurons@meta.data[, "cell.type", drop = F]) 
+colnames(meta.input) <- "cell_type"
+meta.input$cell_type <- gsub("/", ".", meta.input$cell_type)
+meta.input$cell_type <- gsub("\\ ", ".", meta.input$cell_type)
+
+
+fwrite(expr.input,
+       file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_counts_hg.csv.gz",
+       row.names = F, nThread = 10, compress = "gzip")
+write.csv(meta.input,
+          file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_annotations_hg.csv")
+```
+
+
+# Input all cells (mm)
+```{r}
+# Expression data
+expr.input1 <- data.frame(hippo.glia@assays$RNA@counts[, 1:50000])
+expr.input2 <- data.frame(hippo.glia@assays$RNA@counts[, 50001:ncol(hippo.glia)])
+
+expr.input3 <- data.frame(hippo.neurons@assays$RNA@counts[, 1:50000])
+expr.input4 <- data.frame(hippo.neurons@assays$RNA@counts[, 50001:ncol(hippo.neurons)])
+
+expr.input <- cbind(rownames(expr.input1), expr.input1, expr.input2, expr.input3, expr.input4) 
+colnames(expr.input)[1] <- "gene"
+
+# Meta data
+meta.input <- rbind(hippo.glia@meta.data[, "cell.type", drop = F], 
+                    hippo.neurons@meta.data[, "cell.type", drop = F]) 
+colnames(meta.input) <- "cell_type"
+meta.input$cell_type <- gsub("/", ".", meta.input$cell_type)
+meta.input$cell_type <- gsub("\\ ", ".", meta.input$cell_type)
+
+
+fwrite(expr.input,
+       file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_counts_mm.csv.gz",
+       row.names = F, nThread = 10, compress = "gzip")
+write.csv(meta.input,
+          file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_annotations_mm.csv")
+```
+
+# Input neurons (mm)
+```{r}
+# Expression data
+expr.input1 <- data.frame(hippo.neurons@assays$RNA@counts[, 1:50000])
+expr.input2 <- data.frame(hippo.neurons@assays$RNA@counts[, 50001:ncol(hippo.neurons)])
+
+expr.input <- cbind(rownames(expr.input1), expr.input1, expr.input2) 
+colnames(expr.input)[1] <- "gene"
+
+# Meta data
+meta.input <- hippo.neurons@meta.data[, "cell.type", drop = F]
+colnames(meta.input) <- "cell_type"
+meta.input$cell_type <- gsub("/", ".", meta.input$cell_type)
+meta.input$cell_type <- gsub("\\ ", ".", meta.input$cell_type)
+
+
+fwrite(expr.input,
+       file = "/projects/mludwig/hippo_GLP1/output/cellex/input//hippo_neurons_counts_mm.csv.gz",
+       row.names = F, nThread = 10, compress = "gzip")
+write.csv(meta.input,
+          file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_neurons_annotations_mm.csv")
+```
+
+# Input glia (mm)
+```{r}
+# Expression data
+expr.input1 <- data.frame(hippo.glia@assays$RNA@counts[, 1:50000])
+expr.input2 <- data.frame(hippo.glia@assays$RNA@counts[, 50001:ncol(hippo.glia)])
+
+expr.input <- cbind(rownames(expr.input1), expr.input1, expr.input2) 
+colnames(expr.input)[1] <- "gene"
+
+# Meta data
+meta.input <- hippo.glia@meta.data[, "cell.type", drop = F]
+colnames(meta.input) <- "cell_type"
+meta.input$cell_type <- gsub("/", ".", meta.input$cell_type)
+meta.input$cell_type <- gsub("\\ ", ".", meta.input$cell_type)
+
+
+fwrite(expr.input,
+       file = "/projects/mludwig/hippo_GLP1/output/cellex/input//hippo_glia_counts_mm.csv.gz",
+       row.names = F, nThread = 10, compress = "gzip")
+write.csv(meta.input,
+          file = "/projects/mludwig/hippo_GLP1/output/cellex/input/hippo_glia_annotations_mm.csv")
+```
+

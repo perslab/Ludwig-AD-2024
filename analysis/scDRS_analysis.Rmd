@@ -1,0 +1,99 @@
+---
+title: "scDRS_analysis"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+# Convert Seurat objects to h5ad file
+```{r}
+library(Seurat)
+library(anndata)
+library(Matrix)
+
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+
+counts <- as(hippo@assays$RNA@counts, "sparseMatrix")
+meta <- hippo@meta.data
+var <- data.frame(type =  as.integer(seq(1, nrow(counts))), row.names = rownames(counts))
+
+
+adata <- AnnData(X = t(counts),
+                 obs = meta,
+                 var = var)
+
+write_h5ad(adata, file = "/home/cbmr/mlf210/scDRS/anndata_objs/hippo_labels.h5ad")
+```
+
+
+# Map Entrez ID in MAGMA file to gene ID 
+```{r}
+# Load mapping data
+mapping.data3 <- read.csv("/projects/mludwig/DVC/data/gene_info/NCBI37.3.gene.loc",
+                          sep = "", header = F)
+colnames(mapping.data3) <- c("ENTREZID", "chr", "start", "end", "strand", "ALIAS")
+
+
+# Load MAGMA gene-level statistics
+MAGMA.AD <- read.table("/projects/mludwig/hippo_GLP1/data/GWAS/AD_bellenguez.genes.out", header = T)
+head(MAGMA.AD)
+
+# Map to gene symbol
+MAGMA.AD$ALIAS <- mapping.data3$ALIAS[match(MAGMA.AD$GENE, mapping.data3$ENTREZID)]
+MAGMA.AD <- MAGMA.AD[c("ALIAS", "ZSTAT")]
+colnames(MAGMA.AD) <- c("GENE", "AD")
+
+write.table(MAGMA.AD, file = "/projects/mludwig/hippo_GLP1/data/GWAS/AD_bellenguez_scDRS_genes.in",
+            row.names = F, quote = F, sep = "\t")
+
+
+# Load MAGMA gene-level statistics
+MAGMA.BMI <- read.table("/projects/mludwig/hippo_GLP1/data/GWAS/BMI_loh.genes.out", header = T)
+head(MAGMA.BMI)
+
+# Map to gene symbol
+MAGMA.BMI$ALIAS <- mapping.data3$ALIAS[match(MAGMA.BMI$GENE, mapping.data3$ENTREZID)]
+MAGMA.BMI <- MAGMA.BMI[c("ALIAS", "ZSTAT")]
+colnames(MAGMA.BMI) <- c("GENE", "BMI")
+
+write.table(MAGMA.BMI, file = "/projects/mludwig/hippo_GLP1/data/GWAS/BMI_loh_scDRS_genes.in",
+            row.names = F, quote = F, sep = "\t")
+```
+
+# Run scDRS v1.0.2
+
+# Select top 1,000 genes and use z-score weights
+scdrs munge-gs \
+    --out-file /home/cbmr/mlf210/scDRS/GWAS/AD_bellenguez_weights_1000.gs \
+    --zscore-file /projects/mludwig/hippo_GLP1/data/GWAS/AD_bellenguez_scDRS_genes.in \
+    --weight zscore \
+    --n-max 1000    
+
+
+# Compute cell-specific scores
+scdrs compute-score \
+    --h5ad-file /home/cbmr/mlf210/scDRS/anndata_objs/hippo_labels.h5ad\
+    --h5ad-species mouse\
+    --gs-file /home/cbmr/mlf210/scDRS/GWAS/AD_bellenguez_weights_1000.gs\
+    --gs-species human\
+    --out-folder /home/cbmr/mlf210/scDRS/output\
+    --flag-filter-data True\
+    --flag-raw-count True\
+    --n-ctrl 1000\
+    --flag-return-ctrl-raw-score False\
+    --flag-return-ctrl-norm-score True
+
+
+# Compute cell-type-specific-scores
+scdrs perform-downstream \
+    --h5ad-file /home/cbmr/mlf210/scDRS/anndata_objs/hippo_labels.h5ad\
+    --score-file /home/cbmr/mlf210/scDRS/output/AD.full_score.gz\
+    --out-folder /home/cbmr/mlf210/scDRS/output\
+    --group-analysis cell.type,cell.type2,drug\
+    --gene-analysis\
+    --flag-filter-data False\
+    --flag-raw-count True
+
+

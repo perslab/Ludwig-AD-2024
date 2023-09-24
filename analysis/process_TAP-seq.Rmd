@@ -1,0 +1,74 @@
+---
+title: "process_TAP-seq"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+# Run within /scratch/mlf210
+```{r}
+library(Seurat)
+library(stringr)
+library(Matrix)
+```
+
+# Load Seurat object
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+```
+
+# Match barcodes in TAP-seq data with snRNA-seq data
+```{r}
+TAPseq.pools <- paste0("P", seq(1, 21))
+snRNA.pools <- paste0("SI-TT-", c("E12", "F12", "G12", "H12", "A1", "A3", "A6", "A12",
+                                  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "C1", "D1",
+                                  "E1", "F1", "G1", "H1"))
+
+for (i in 1:length(TAPseq.pools)) {
+  print(i)
+
+  # Load TAP-seq data
+  path <- paste0("/scratch/mlf210/cellranger/data-runs/TAP-seq/", TAPseq.pools[i],
+                 "_HIPP_LPS_raw_feature_bc_matrix.h5")
+  TAPseq.counts1  <- Read10X_h5(path)
+  TAPseq.barcodes <- colnames(TAPseq.counts1)
+  TAPseq.prefix <- gsub("-1$", "", TAPseq.barcodes)
+  TAPseq.suffix <-  unique(str_sub(TAPseq.barcodes, 17, 18))
+  
+  # Identitfy matching barcodes in snRNA-seq data
+  snRNA.barcodes <- colnames(hippo)[which(hippo$pool == snRNA.pools[i])]
+  snRNA.prefix <- str_sub(snRNA.barcodes, 1, 16)
+  snRNA.suffix <- unique(str_sub(snRNA.barcodes, 17, 21))
+  
+  common.barcodes <- intersect(TAPseq.prefix, snRNA.prefix)
+
+  print(length(common.barcodes))
+  print(length(snRNA.prefix))
+  
+  # Generate new TAP-seq count matrix where all barcodes in snRNA-seq are included
+  TAPseq.counts2 <- Matrix(nrow = nrow(TAPseq.counts1), ncol = length(snRNA.barcodes), data = 0, sparse = TRUE)
+  rownames(TAPseq.counts2) <- rownames(TAPseq.counts1)
+  colnames(TAPseq.counts2) <- snRNA.barcodes
+  
+  TAPseq.counts2[, paste0(common.barcodes, snRNA.suffix)] <- TAPseq.counts1[, paste0(common.barcodes, TAPseq.suffix)]
+  
+  # Merge with data from all pools
+  if (i == 1) {
+    TAPseq.counts.all <- TAPseq.counts2
+  }
+  else {
+    TAPseq.counts.all <- cbind(TAPseq.counts.all, TAPseq.counts2)
+  }
+
+}
+```
+
+# Save TAP-seq data as assay in Seurat object
+```{r}
+TAPseq.assay <- CreateAssayObject(counts = TAPseq.counts.all)
+saveRDS(TAPseq.assay, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_TAP-seq_assay.rds")
+```
+
+

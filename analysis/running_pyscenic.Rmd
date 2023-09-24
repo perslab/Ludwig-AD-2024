@@ -1,0 +1,211 @@
+---
+title: "Running pyscenic from terminal"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+```{r, echo=F}
+# Settings for the html file
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+
+### Initial files and setup
+
+#### Conda environment
+All the pyscenic code is run inside a conda environment.
+To activate this environment run the following:
+```{bash}
+cd /home/cbmr/mlf210/SCENIC # Run in home dir
+conda activate /tools/anaconda/envs/qwn903/scenic_protocol/
+```
+
+#### Notes on debugging
+I have experienced hanging processes when running pyscenic, and the solution to this is to run everything in your home-dir. \
+So try this as a first step in debugging if you experience the same \
+\
+
+#### Input files
+Pyscenic uses ranking databases and motif annotations - download from this website https://resources.aertslab.org/cistarget/ for other ensembles than mm9.
+
+All the nessasary files for mm9 can be found at */projects/amj/genetics/my_tools/SCENIC/*. \
+The ranking databases consists of these files;\
+*mm9-500bp-upstream-10species.mc9nr.feather,* \
+*mm9-tss-centered-10kb-10species.mc9nr.feather,* \
+*mm9-tss-centered-5kb-10species.mc9nr.feather* 
+
+And the motif annotations are found in this file \
+*motifs-v9-nr.mgi-m0.001-o0.0.tbl*
+
+
+To extract the transcription-factors (col = gene_name) from the motif annotations file, run the following
+```{bash}
+less /projects/amj/genetics/my_tools/SCENIC/motifs-v9-nr.mgi-m0.001-o0.0.tbl | cut -f 6 | sort | uniq > mm_tfs.txt
+```
+
+
+### Step 1 - Generate matrix
+To generate input for pyscenic, do the general filtering steps for your single cell data (eg. filter for cells with min.genes > 200, and genes present in min.3 cells)
+The generated matrix should then be saved as a loom file. \
+\
+_NB!_ Regarding normalization \
+As noted in the *GENIE3* tutorial https://bioconductor.org/packages/release/bioc/vignettes/GENIE3/inst/doc/GENIE3.html, the expression data do not need to be normalized in any way
+
+#### Seurat to loom
+Here is one way to save your seurat object as a loom file to be used in pyscenic
+```{r}
+library(Seurat)
+library(SeuratDisk)
+
+seur.obj <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj.rds")
+
+DefaultAssay(seur.obj) <- "RNA"
+
+seur.obj.sub <- subset(seur.obj, cell.type == "Mobp_oligodendrocytes")
+# seur_obj[['integrated']] <- NULL
+
+loom.ma <- as.loom(seur.obj.sub, 
+                   filename = "/home/cbmr/mlf210/SCENIC/hippo_Mobp_oligodendrocytes.loom", verbose = FALSE)
+
+loom.ma$close_all()
+
+```
+
+```{r}
+library(Seurat)
+library(SeuratDisk)
+
+seur.obj <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj.rds")
+
+DefaultAssay(seur.obj) <- "RNA"
+
+loom.ma <- as.loom(seur.obj, 
+                   filename = "/home/cbmr/mlf210/SCENIC/DVC_neurons.loom", verbose = FALSE)
+
+loom.ma$close_all()
+
+```
+
+
+#### Python to loom
+If you want to use python instead of R, here is a short example to generate the loom file
+```{python}
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import anndata as ad
+import loompy as lp
+
+# Input matrix
+df_counts = pd.read_csv(COUNTS_MTX_FNAME, sep='\t', index_col=0)
+df_metadata = pd.read_csv(METADATA_FNAME, sep='\t', index_col=1)
+
+# Into Anndata
+adata = sc.AnnData(X=df_counts.T.sort_index())
+adata.obs = df_metadata.set_index('cell_id').sort_index()
+adata.var_names_make_unique()
+sc.pp.filter_cells(adata, min_genes=200)
+sc.pp.filter_genes(adata, min_cells=3)
+adata.raw = adata
+sc.pp.normalize_total(adata, max_fraction=0.9)
+sc.pp.log1p(adata)
+
+# Create basic row and column attributes for the loom file:
+row_attrs = {
+    "Gene": np.array(adata.var_names) ,
+}
+col_attrs = {
+    "CellID": np.array(adata.obs_names) ,
+    "nGene": np.array( np.sum(adata.X.transpose()>0 , axis=0)).flatten() ,
+    "nUMI": np.array( np.sum(adata.X.transpose() , axis=0)).flatten() ,
+}
+lp.create("~/qc_mtx.loom", adata.X.transpose(), row_attrs, col_attrs)
+```
+
+\
+\
+The run times listed below are measured using a count matrix of 18160 cells x 28417 features
+\
+
+### Step 2 - run GRN
+The following steps have longer run times and should be run inside a tmux session.\
+Run time; _approx 5 hours_
+
+```{bash}
+source activate /tools/anaconda/envs/qwn903/scenic_protocol/
+
+pyscenic grn DVC_neurons.loom mm_tfs.txt -o adjacencies_DVC_neurons.tsv --num_workers 20
+```
+
+
+### Step 3 - run cisTarget 
+Run time; _24 min_
+```{bash}
+source activate /tools/anaconda/envs/qwn903/scenic_protocol/
+
+pyscenic ctx adjacencies_DVC_neurons.tsv mm9-500bp-upstream-10species.mc9nr.feather mm9-tss-centered-10kb-10species.mc9nr.feather mm9-tss-centered-5kb-10species.mc9nr.feather \
+            --annotations_fname motifs-v9-nr.mgi-m0.001-o0.0.tbl \
+            --expression_mtx_fname DVC_neurons.loom \
+            --output motifs_DVC_neurons.csv \
+            --num_workers 20
+```
+
+
+### Step 4 - run AUCell
+Run time; _5 min_
+```{bash}
+source activate /tools/anaconda/envs/qwn903/scenic_protocol/
+
+pyscenic aucell \
+    DVC_neurons.loom \
+    motifs_DVC_neurons.csv \
+    --output scenic_DVC_neurons.loom \
+    --num_workers 20
+```
+
+
+### Step 4.5 -  output AUCell thresholds
+To get the thresholds for the final scenic loom-file into R, you have to run this python code-snippet (in the conda environment) to get the output
+```{python}
+import json
+import zlib
+import base64
+import loompy as lp
+
+lf = lp.connect("/home/cbmr/mlf210/SCENIC/scenic_DVC_neurons.loom", mode='r+', validate=False )
+meta = json.loads(zlib.decompress(base64.b64decode( lf.attrs.MetaData )))
+rt = meta['regulonThresholds']
+
+with open('/home/cbmr/mlf210/SCENIC/regulon_thresholds_DVC_neurons.json', 'w') as fp:
+    json.dump(rt, fp)
+    
+```
+
+### Notes on individual steps
+#### Step 2 - GRN
+* For each gene in the dataset, a tree-based regression model is trained to predict its expression-profile using the expression values of a set of candidate transcription factors (TFs). 
+* Each model produces a partial GRN with regulatory associations from the best predicting TFs to the target gene. 
+* All regulatory associations are combined and sorted by importance to finalize the GRN output.
+* Method is stochastic
+* Output is a list of adjacencies connecting a TF with a target gene. A weight or importance value is associated with these connections to distinguish strong from weak regulatory interactions.
+
+#### Step 3 - cisTarget
+Consists of 2 phases
+
+* A ranking phase, which models transcriptional regulation by a TF as a genome wide ranking of genes.
+    + For each gene, a regulatory search space (500 bp, 10 kb or 20 kb around the TSS) is scanned for homotypic cis-regulatory modules (CRM) using a Hidden Markov Model. 
+    + Starting from a library with N PWMs (position weight matrices = a matrix representation of a regulatory motif).
+    + N ranked lists of genes are generated, each with the most likely genomic targets of a particular motif at the top of the ranking. 
+    + Orthologous search spaces in ten other vertebrate genomes are determined. The rankings for different species are combined by rank aggregation into one final ranking for each PWM in our library.
+* A recovery phase, which quantifies the involvement of a factor in a set of genes (or gene signature) using a recovery-based statistic.
+    + The recovery step uses as input any set of co-expressed genes. 
+    + The enrichment of these genes is determined in each of the N motif-based rankings using the Area Under the cumulative Recovery Curve (AUC), whereby the AUC is computed in the top of the ranking. 
+
+#### Step 4 - AUCell
+* Each individual cell’s transcriptome is modelled as a whole-genome ranking based on the expression of its genes. 
+* The enrichment of a regulon is subsequently assessed via recovery of its targetome on the cell’s whole-genome ranking. 
+* The AUC metric measures the relative biological activity of a regulon in a given cell.
+
