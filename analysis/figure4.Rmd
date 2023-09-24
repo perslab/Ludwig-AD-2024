@@ -1,0 +1,777 @@
+---
+title: "figure4"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(cowplot)
+library(dplyr)
+library(doMC)
+library(lme4)
+library(emmeans)
+library(mgcv)
+library(RColorBrewer)
+registerDoMC(20)
+```
+
+# Load Seurat objects
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+```
+
+# Figure 4b
+```{r}
+# Read AD GWAS enrichment scores
+AD.scDRS <- read.table(gzfile("/projects/mludwig/hippo_GLP1/output/scDRS/AD.score.gz"))
+hippo$AD.score <- AD.scDRS$norm_score[match(colnames(hippo), rownames(AD.scDRS))]
+hippo$AD.p <- AD.scDRS$pval[match(colnames(hippo), rownames(AD.scDRS))]
+hippo$AD.p.adj <- p.adjust(AD.scDRS$pval[match(colnames(hippo), rownames(AD.scDRS))], method = "fdr")
+
+cell.type.score <- read.table(gzfile("/projects/mludwig/hippo_GLP1/output/scDRS/AD.scdrs_group.cell.type2"), 
+                                 header = T)
+colnames(cell.type.score)[1] <- "cell.type2"
+cell.type.score$assoc_mcfdr <- p.adjust(cell.type.score$assoc_mcp, method = "fdr")
+cell.type.score[order(cell.type.score$assoc_mcp),]
+```
+
+```{r}
+# Plot
+gene.set <- "AD.score"
+
+gene.set.expr <- data.frame(expression = hippo@meta.data[, gene.set],
+                        cell.type = factor(hippo$cell.type2, levels = levels(hippo$cell.type2)))
+
+sig.cell.types <- cell.type.score$cell.type2[which(cell.type.score$assoc_mcfdr < 0.05)]
+gene.set.expr$significant <- "No"
+gene.set.expr$significant[which(gene.set.expr$cell.type %in% sig.cell.types)] <- "Yes"
+   
+AD.enrichment.plot <- ggplot(gene.set.expr, aes(x = cell.type, y = expression, fill = significant)) + 
+      geom_violin(scale = "width", adjust = 1.5, show.legend = T, size = 0.2, color = "black", width = 0.5) +
+      theme_pubr() +
+      theme(panel.grid.major = element_blank(), 
+            panel.grid.minor = element_blank(),
+            panel.background = element_blank(), 
+            axis.line = element_line(colour = "black", size = 0.3),
+            axis.text.y = element_text(size=6, face="bold"),
+            axis.text.x = element_text(size=6, face="bold", angle = 45, hjust = 1),
+            axis.title.y = element_text(size=6, face="bold", margin=unit(c(0,0,0,0), "cm")),
+            # margin: top, right, bottom, and left
+            plot.margin=unit(c(0.1,0,-0.5,0.6), "cm"),
+            legend.text = element_text(size=6, face="bold"),
+            legend.title = element_text(size=6, face="bold"),
+            legend.key.height = unit(0.1, "cm"),
+            legend.key.width = unit(0.2, "cm"),
+            legend.margin=margin(0, 0, 0, 0),
+            legend.box.margin=margin(0, -5, -10, -5),
+            plot.title = element_text(hjust = 0.5, size=6, face="bold")) +
+      xlab("") + ylab("AD scDRS score") +
+      scale_fill_manual(values = c("grey", "turquoise4"), labels = c("NS", "<0.05")) + 
+      scale_y_continuous(breaks = seq(-10, 10, 5)) +
+  guides(fill = guide_legend(title = expression(paste(bolditalic("P"), bold("-value")))))
+
+AD.enrichment.plot
+```
+
+# Figure 4c
+```{r}
+# Compute statistics for Veh-LPS and Veh-PBS
+groups <- c("Veh-LPS", "Veh-PBS")
+
+cell.types <- unique(hippo$cell.type2)
+lmer.AD.veh <- foreach(k = cell.types) %dopar% {
+  
+  set.seed(1)
+  
+  hippo.sub <- subset(hippo, cell.type2 == k & drug %in% groups & 
+                        time %in% c("2h", "24h"))
+
+  sample <- unique(hippo.sub$hash.ID)
+
+  data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment), 
+                           sample = as.factor(hippo.sub$hash.ID),
+                           pool = as.factor(hippo.sub$pool),
+                           run = as.factor(hippo.sub$run),
+                           time = as.factor(hippo.sub$time),
+                           drug = factor(hippo.sub$drug, 
+                                          levels = groups),
+                           pathway = hippo.sub@meta.data[, "AD.score"])
+  
+  results <- data.frame(matrix(NA, nrow = 1, ncol = 3))
+  colnames(results) <- c("beta", "SE", "p.value")
+  
+  # Linear mixed effects model
+  model <- lmer(pathway ~ drug * time + (1|sample) + (1|pool),
+           data=data,
+           REML=TRUE)
+
+  emm <- lsmeans(model, pairwise ~ drug, var = time, adjust = NULL)
+  emm <- summary(emm$contrasts)
+
+  results$p.value <- emm$p.value[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+  results$SE <- emm$SE[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+  results$beta <- emm$estimate[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+
+  results$cell.type <- k
+  results
+  }
+
+names(lmer.AD.veh) <- cell.types
+lmer.AD.veh <- dplyr::bind_rows(lmer.AD.veh, .id = "cell.type")
+lmer.AD.veh$p.adj <- p.adjust(lmer.AD.veh$p.value, method = "fdr")
+
+# Compute statistics for Sema-LPS and Veh-LPS
+groups <- c("Sema-LPS", "Veh-LPS")
+
+lmer.AD.LPS <- foreach(k = cell.types) %dopar% {
+  
+  set.seed(1)
+  
+  hippo.sub <- subset(hippo, cell.type2 == k & drug %in% groups)
+
+  sample <- unique(hippo.sub$hash.ID)
+
+  data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment), 
+                           sample = as.factor(hippo.sub$hash.ID),
+                           pool = as.factor(hippo.sub$pool),
+                           run = as.factor(hippo.sub$run),
+                           time = as.factor(hippo.sub$time),
+                           drug = factor(hippo.sub$drug, 
+                                          levels = groups),
+                           pathway = hippo.sub@meta.data[, "AD.score"])
+  
+  results <- data.frame(matrix(NA, nrow = 1, ncol = 3))
+  colnames(results) <- c("beta", "SE", "p.value")
+  
+  # Linear mixed effects model
+  model <- lmer(pathway ~ drug * time + (1|sample) + (1|pool),
+           data=data,
+           REML=TRUE)
+  
+  emm <- lsmeans(model, pairwise ~ drug, adjust = NULL)
+  emm <- summary(emm$contrasts)
+
+  results$p.value <- emm$p.value[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+  results$SE <- emm$SE[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+  results$beta <- emm$estimate[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+
+  results$cell.type <- k
+  results
+}
+
+names(lmer.AD.LPS) <- cell.types
+lmer.AD.LPS <- dplyr::bind_rows(lmer.AD.LPS, .id = "cell.type")
+lmer.AD.LPS$p.adj <- p.adjust(lmer.AD.LPS$p.value, method = "fdr")
+
+lmer.AD.veh$comparison <- "Veh-LPS vs. veh-PBS"
+lmer.AD.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+lmer.AD.veh$delta <- lmer.AD.LPS$delta <- lmer.AD.veh$beta - lmer.AD.LPS$beta
+
+lmer.AD <- rbind(lmer.AD.veh, lmer.AD.LPS)
+lmer.AD
+```
+
+```{r}
+# Plot
+lmer.AD$cell.type <- factor(lmer.AD$cell.type, levels = lmer.AD.veh$cell.type[order(lmer.AD.veh$delta, decreasing = T)])
+lmer.AD$comparison <- factor(lmer.AD$comparison, levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+lmer.AD$p.symbol <- ""
+lmer.AD$p.symbol[which(lmer.AD$p.adj < 0.05)] <- "*"
+lmer.AD$p.symbol[which(lmer.AD$p.adj < 0.01)] <- "**"
+lmer.AD$p.symbol[which(lmer.AD$p.adj < 0.001)] <- "***"
+
+veh.signif <- lmer.AD[which(lmer.AD$comparison == "Veh-LPS vs. veh-PBS" & lmer.AD$p.symbol != ""),]
+veh.signif$x <- match(veh.signif$cell.type, levels(lmer.AD$cell.type))
+veh.signif$y <- veh.signif$beta + veh.signif$SE
+
+LPS.signif <- lmer.AD[which(lmer.AD$comparison == "Sema-LPS vs. veh-LPS" & lmer.AD$p.symbol != ""),]
+LPS.signif$x <- match(LPS.signif$cell.type, levels(lmer.AD$cell.type))
+LPS.signif$y <- LPS.signif$beta + LPS.signif$SE
+
+lmer.AD$pathway <- "AD"
+variable.names.AD <- list("AD" = "AD-associated risk genes")
+
+variable_labeller_AD <- function(variable, value){
+  return(variable.names.AD[value])
+}
+
+lmer.AD.plot <- ggplot(lmer.AD, aes(x = cell.type, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_AD ) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm"),
+        strip.text = element_text(size=6, face="bold")) + 
+  ylab("\u03b2") + xlab("") +
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1) +
+  geom_signif(y_position=c(veh.signif$y + 0.05), xmin=veh.signif$x - 0.1,
+           xmax=veh.signif$x - 0.1, size = 0, textsize = 2,
+           annotation=veh.signif$p.symbol, fontface = "bold", colour = "#96C2D0") +
+  geom_signif(y_position=c(LPS.signif$y + 0.05), xmin=LPS.signif$x + 0.1,
+            xmax=LPS.signif$x + 0.1, size = 0, textsize = 2,
+            annotation=LPS.signif$p.symbol, fontface = "bold", colour = "#FC6A03")
+lmer.AD.plot
+```
+
+
+# Figure 4d
+```{r}
+### Identify AD-associated genes and map to mouse gene symbols ###
+# Load Entrez-ID-to-gene-symbol mapping data
+mapping.data3 <- read.csv("/projects/mludwig/DVC/data/gene_info/NCBI37.3.gene.loc",
+                          sep = "", header = F)
+colnames(mapping.data3) <- c("ENTREZID", "chr", "start", "end", "strand", "ALIAS")
+
+# Load MAGMA data
+MAGMA.AD <- read.table("/projects/mludwig/hippo_GLP1/data/GWAS/AD_bellenguez.genes.out", header = T)
+MAGMA.AD$ALIAS <- mapping.data3$ALIAS[match(MAGMA.AD$GENE, mapping.data3$ENTREZID)]
+# Subset to top 1,000 
+MAGMA.AD <- MAGMA.AD[order(MAGMA.AD$P)[1:1000],]
+
+# Load human-to-mouse mapping data
+human.mouse.mapping <- read.csv("/projects/mludwig/hippo_GLP1/data/gene_info/human_mouse_mapping.csv")
+mapping <- human.mouse.mapping[, c("human.gene.name", "mouse.gene.name")]
+mapping <- subset(mapping, complete.cases(mapping))
+mapping <- mapping[mapping$human.gene.name != "" & mapping$mouse.gene.name != "",]
+mapping <- mapping[!(duplicated(mapping)),]
+duplicated.human.gene.name <- mapping$human.gene.name[duplicated(mapping$human.gene.name)]
+duplicated.mouse.gene.name <- mapping$mouse.gene.name[duplicated(mapping$mouse.gene.name)]
+
+# Keep only 1-1 mapping
+mapping <- mapping[!(mapping$human.gene.name %in% duplicated.human.gene.name),]
+mapping <- mapping[!(mapping$mouse.gene.name %in% duplicated.mouse.gene.name),]
+
+# Map to mouse genes
+idx <- which(MAGMA.AD$ALIAS %in% mapping$human.gene.name)
+MAGMA.AD$ALIAS.MOUSE <- NA
+MAGMA.AD$ALIAS.MOUSE[idx] <- mapping$mouse.gene.name[match(MAGMA.AD$ALIAS[idx], mapping$human.gene.name)]
+
+ranked.AD.genes <- MAGMA.AD$ALIAS.MOUSE[order(MAGMA.AD$P)]
+ranked.AD.genes <- ranked.AD.genes[!(is.na(ranked.AD.genes))]
+ranked.AD.genes <- ranked.AD.genes[which(ranked.AD.genes %in% rownames(hippo@assays$RNA))]
+
+# Top 50 AD-associated genes
+AD.genes <- ranked.AD.genes[1:50]
+```
+
+```{r}
+# # Compute statistics for veh-LPS vs. veh-PBS
+# groups <-  c("Veh-PBS", "Veh-LPS")
+# 
+# GAM.veh <- vector(mode = "list", length = length(unique(hippo$cell.type2)))
+# names(GAM.veh) <- levels(hippo$cell.type2)
+# 
+# for (j in names(GAM.veh)) {
+# 
+#   print(j)
+# 
+#   hippo.sub <- subset(hippo, cell.type2 == j & drug %in% groups & time %in% c("2h", "24h"))
+# 
+#   time <- hippo.sub$time
+#   time <- gsub("h", "", time)
+#   time <- as.numeric(time)
+# 
+#   data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment),
+#                            sample = as.factor(hippo.sub$hash.ID),
+#                            pool = as.factor(hippo.sub$pool),
+#                            drug = factor(hippo.sub$drug, levels = groups),
+#                            time = time)
+# 
+#   GAM <- foreach(i = AD.genes) %dopar% {
+#     
+#     set.seed(1)
+# 
+#     data$gene <- hippo.sub@assays$RNA@counts[i, ]
+#       
+#     model <- gam(gene ~ drug * time + s(sample, bs = "re") + s(pool, bs = "re"),
+#                  data = data, verbose = F, method = "REML", family = "nb")
+# 
+# 
+#     beta.veh.LPS <- summary(model)$p.coeff["drugVeh-LPS"]
+#     p.veh.LPS <- summary(model)$p.pv["drugVeh-LPS"]
+# 
+#     results <- c(beta.veh.LPS = as.numeric(beta.veh.LPS),
+#                  p.veh.LPS = as.numeric(p.veh.LPS),
+#                  rank = which(AD.genes == i))
+#     results
+#   }
+# 
+#   names(GAM) <- AD.genes
+# 
+#   GAM <- dplyr::bind_rows(GAM, .id = c("gene"))
+#   GAM$p.adj.veh.LPS <- p.adjust(GAM$p.veh.LPS, method = "fdr")
+#   GAM.veh[[j]] <- GAM
+#   
+#   print(GAM$gene[which(GAM$p.adj.veh.LPS < 0.05)])
+# }
+#
+# saveRDS(GAM.veh, "/projects/mludwig/hippo_GLP1/output/scDRS/GAM_AD_genes_veh-LPS_vs_veh-PBS.rds")
+```
+
+```{r}
+# # Compute statistics for Sema-LPS vs. veh-LPS
+# groups <-  c("Veh-LPS", "Sema-LPS")
+# 
+# GAM.LPS <- vector(mode = "list", length = length(unique(hippo$cell.type2)))
+# names(GAM.LPS) <- levels(hippo$cell.type2)
+# 
+# for (j in names(GAM.LPS)) {
+# 
+#   print(j)
+# 
+#   hippo.sub <- subset(hippo, cell.type2 == j & drug %in% groups)
+# 
+#   time <- hippo.sub$time
+#   time <- gsub("h", "", time)
+#   time <- gsub("11d", 11*24, time)
+#   time <- gsub("5d", 5*24, time)
+#   time <- as.numeric(time)
+# 
+#   data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment),
+#                            sample = as.factor(hippo.sub$hash.ID),
+#                            pool = as.factor(hippo.sub$pool),
+#                            drug = factor(hippo.sub$drug, levels = groups),
+#                            time = time)
+# 
+#   GAM <- foreach(i = AD.genes) %dopar% {
+#     
+#     set.seed(1)
+# 
+#     data$gene <- hippo.sub@assays$RNA@counts[i, ]
+#       
+#     model <- gam(gene ~ drug * time + s(sample, bs = "re") + s(pool, bs = "re"),
+#                  data = data, verbose = F, method = "REML", family = "nb")
+# 
+# 
+#     beta.sema.LPS <- summary(model)$p.coeff["drugSema-LPS"]
+#     p.sema.LPS <- summary(model)$p.pv["drugSema-LPS"]
+# 
+#     results <- c(beta.sema.LPS = as.numeric(beta.sema.LPS),
+#                  p.sema.LPS = as.numeric(p.sema.LPS),
+#                  rank = which(AD.genes == i))
+#     results
+#   }
+# 
+#   names(GAM) <- AD.genes
+# 
+#   GAM <- dplyr::bind_rows(GAM, .id = c("gene"))
+#   GAM$p.adj.sema.LPS <- p.adjust(GAM$p.sema.LPS, method = "fdr")
+#   GAM.LPS[[j]] <- GAM
+#   
+#   print(GAM$gene[which(GAM$p.adj.sema.LPS < 0.05)])
+# }
+# 
+# saveRDS(GAM.LPS, "/projects/mludwig/hippo_GLP1/output/scDRS/GAM_AD_genes_sema-LPS_vs_veh-LPS.rds")
+```
+
+```{r}
+# Load GAM results 
+GAM.veh <- readRDS("/projects/mludwig/hippo_GLP1/output/scDRS/GAM_AD_genes_veh-LPS_vs_veh-PBS.rds")
+GAM.LPS <- readRDS("/projects/mludwig/hippo_GLP1/output/scDRS/GAM_AD_genes_sema-LPS_vs_veh-LPS.rds")
+```
+
+```{r}
+# Microglia
+GAM.microglia.veh <- GAM.veh[["Microglia"]]
+GAM.microglia.LPS <- GAM.LPS[["Microglia"]]
+GAM.microglia.veh$comparison <- "Veh-LPS vs. veh-PBS"
+GAM.microglia.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+GAM.microglia.veh$cell.type <- "Microglia"
+GAM.microglia.LPS$cell.type <- "Microglia"
+colnames(GAM.microglia.veh) <- colnames(GAM.microglia.LPS) <- c("gene", "beta", "p", "rank", "p.adj", "comparison", "cell.type")
+
+# Pericytes1
+GAM.pericytes1.veh <- GAM.veh[["Pericytes1"]]
+GAM.pericytes1.LPS <- GAM.LPS[["Pericytes1"]]
+GAM.pericytes1.veh$comparison <- "Veh-LPS vs. veh-PBS"
+GAM.pericytes1.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+GAM.pericytes1.veh$cell.type <- "Pericytes1"
+GAM.pericytes1.LPS$cell.type <- "Pericytes1"
+colnames(GAM.pericytes1.veh) <- colnames(GAM.pericytes1.LPS) <- 
+  c("gene", "beta", "p", "rank", "p.adj", "comparison", "cell.type")
+
+# Endothelial cells
+GAM.endothelial.cells.veh <- GAM.veh[["Endothelial_cells"]]
+GAM.endothelial.cells.LPS <- GAM.LPS[["Endothelial_cells"]]
+GAM.endothelial.cells.veh$comparison <- "Veh-LPS vs. veh-PBS"
+GAM.endothelial.cells.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+GAM.endothelial.cells.veh$cell.type <- "Endothelial_cells"
+GAM.endothelial.cells.LPS$cell.type <- "Endothelial_cells"
+colnames(GAM.endothelial.cells.veh) <- colnames(GAM.endothelial.cells.LPS) <- 
+  c("gene", "beta", "p", "rank", "p.adj", "comparison", "cell.type")
+
+# genes <- AD.genes[1:40]
+# GAM.microglia.veh <- GAM.microglia.veh[which(GAM.microglia.veh$gene %in% genes),]
+# GAM.microglia.veh$p.adj <- p.adjust(GAM.microglia.veh$p, method = "fdr")
+# 
+# GAM.microglia.LPS <- GAM.microglia.LPS[which(GAM.microglia.LPS$gene %in% genes),]
+# GAM.microglia.LPS$p.adj <- p.adjust(GAM.microglia.LPS$p, method = "fdr")
+# 
+# GAM.pericytes1.veh <- GAM.pericytes1.veh[which(GAM.pericytes1.veh$gene %in% genes),]
+# GAM.pericytes1.veh$p.adj <- p.adjust(GAM.pericytes1.veh$p, method = "fdr")
+# 
+# GAM.pericytes1.LPS <- GAM.pericytes1.LPS[which(GAM.pericytes1.LPS$gene %in% genes),]
+# GAM.pericytes1.LPS$p.adj <- p.adjust(GAM.pericytes1.LPS$p, method = "fdr")
+# 
+# GAM.endothelial.cells.veh <- GAM.endothelial.cells.veh[which(GAM.endothelial.cells.veh$gene %in% genes),]
+# GAM.endothelial.cells.veh$p.adj <- p.adjust(GAM.endothelial.cells.veh$p, method = "fdr")
+# 
+# GAM.endothelial.cells.LPS <- GAM.endothelial.cells.LPS[which(GAM.endothelial.cells.LPS$gene %in% genes),]
+# GAM.endothelial.cells.LPS$p.adj <- p.adjust(GAM.endothelial.cells.LPS$p, method = "fdr")
+
+
+GAM.data <- rbind(GAM.microglia.veh, GAM.microglia.LPS, 
+                  GAM.pericytes1.veh, GAM.pericytes1.LPS,
+                  GAM.endothelial.cells.veh, GAM.endothelial.cells.LPS)
+
+
+GAM.data$comparison <- factor(GAM.data$comparison, levels = c("Sema-LPS vs. veh-LPS", "Veh-LPS vs. veh-PBS"))
+GAM.data$size <- -log10(GAM.data$p.adj)
+GAM.data$size[which(GAM.data$p.adj > 0.05)] <- NA
+
+GAM.data$beta[which(GAM.data$p.adj > 0.05)] <- NA
+GAM.data$gene <- factor(GAM.data$gene, levels = AD.genes)
+GAM.data[order(GAM.data$beta, decreasing = T),]
+```
+
+```{r}
+# Plot
+AD.genes.plot <- ggplot(GAM.data, aes(x = gene, y = comparison)) +
+  geom_tile(size = 1, color = "white", fill="grey99") +
+  geom_point(aes(size = size, color = beta)) + 
+  facet_wrap(~cell.type, ncol = 1) +
+  scale_size(name = expression(paste(bold(-log[10]),bold("("),
+                                     bolditalic("P"),bold(")"))),
+             range = c(0, 2), breaks = c(2, 4, 8, 16),
+             limits = c(0, max(GAM.data$size))) +
+   scale_color_gradient2(low = "midnightblue", mid = "white", high = "aquamarine4",
+                         breaks = c(seq(-3, 3, 1.5)), limits = c(-3.37, 3.37),
+                         name = expression(bold(paste(beta))))  +
+  theme_pubr(legend = "top") + xlab(NULL) + ylab(NULL) + 
+  theme(axis.text.x = element_text(size=4, face="bold", angle=45, hjust = 1), 
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.title = element_text(size=6, face="bold"), 
+        legend.text = element_text(size=6, face="bold"),
+        axis.line = element_line(colour = "black"),
+        # margin: top, right, bottom, and left
+        plot.margin = unit(c(0, 0, 0, 1), "cm"),
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, -5, -10, -5),
+        strip.text = element_text(size=6, face="bold")) +
+  guides(color = guide_colorbar(title.vjust = 0.8),
+         shape = guide_legend(title.vjust = 0.8))
+AD.genes.plot
+```
+
+
+# Figure 4f
+```{r}
+# Load Neff module scores
+module.scores.neff <- readRDS("/projects/mludwig/hippo_GLP1/data/2021_Neff/hippo_module_scores_Neff_classes.rds")
+hippo@meta.data <- cbind(hippo@meta.data, module.scores.neff)
+```
+
+```{r}
+pathways <- c("C_up", "C_down") 
+
+# Compute statistics for Veh-LPS and Veh-PBS
+groups <- c("Veh-LPS", "Veh-PBS")
+
+cell.types <- unique(hippo$cell.type2)
+
+lmer.neff.veh <- foreach(k = cell.types) %dopar% {
+  
+  hippo.sub <- subset(hippo, cell.type2 == k & drug %in% groups & 
+                        time %in% c("2h", "24h"))
+
+  sample <- unique(hippo.sub$hash.ID)
+
+  data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment), 
+                           sample = as.factor(hippo.sub$hash.ID),
+                           pool = as.factor(hippo.sub$pool),
+                           run = as.factor(hippo.sub$run),
+                           time = as.factor(hippo.sub$time),
+                           drug = factor(hippo.sub$drug, 
+                                          levels = groups))
+  
+  results <- data.frame(matrix(NA, nrow = length(pathways), ncol = 4))
+  colnames(results) <- c("pathway", "beta", "SE", "p.value")
+  
+  for(i in 1:length(pathways)) {
+
+  set.seed(i)
+    
+  data$pathway <- hippo.sub@meta.data[, pathways[i]]
+    
+  # Linear mixed effects model
+  model <- lmer(pathway ~ drug * time + (1|sample) + (1|pool),
+           data=data,
+           REML=TRUE)
+
+  emm <- lsmeans(model, pairwise ~ drug, var = time, adjust = NULL)
+  emm <- summary(emm$contrasts)
+   
+  results$pathway[i] <- pathways[i]
+  results$p.value[i] <- emm$p.value[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+  results$SE[i] <- emm$SE[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+  results$beta[i] <- emm$estimate[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+  }
+  
+  results$cell.type <- k
+  results
+}
+
+names(lmer.neff.veh) <- cell.types
+lmer.neff.veh <- dplyr::bind_rows(lmer.neff.veh, .id = "cell.type")
+lmer.neff.veh$p.adj <- p.adjust(lmer.neff.veh$p.value, method = "fdr")
+
+# Compute statistics for Sema-LPS and Veh-LPS
+groups <- c("Sema-LPS", "Veh-LPS")
+
+lmer.neff.LPS <- foreach(k = cell.types) %dopar% {
+
+  hippo.sub <- subset(hippo, cell.type2 == k & drug %in% groups)
+
+  sample <- unique(hippo.sub$hash.ID)
+
+  data <- cbind.data.frame(treatment = as.factor(hippo.sub$treatment), 
+                           sample = as.factor(hippo.sub$hash.ID),
+                           pool = as.factor(hippo.sub$pool),
+                           run = as.factor(hippo.sub$run),
+                           time = as.factor(hippo.sub$time),
+                           drug = factor(hippo.sub$drug, 
+                                          levels = groups))
+  
+  results <- data.frame(matrix(NA, nrow = length(pathways), ncol = 4))
+  colnames(results) <- c("pathway", "beta", "SE", "p.value")
+  
+  for(i in 1:length(pathways)) {
+
+  set.seed(i)
+    
+  data$pathway <- hippo.sub@meta.data[, pathways[i]]
+  
+  # Linear mixed effects model
+  model <- lmer(pathway ~ drug * time + (1|sample) + (1|pool),
+           data=data,
+           REML=TRUE)
+  
+  emm <- lsmeans(model, pairwise ~ drug, adjust = NULL)
+  emm <- summary(emm$contrasts)
+
+  results$pathway[i] <- pathways[i]
+  results$p.value[i] <- emm$p.value[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+  results$SE[i] <- emm$SE[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+  results$beta[i] <- emm$estimate[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+  }
+  
+  results$cell.type <- k
+  results
+}
+
+names(lmer.neff.LPS) <- cell.types
+lmer.neff.LPS <- dplyr::bind_rows(lmer.neff.LPS, .id = "cell.type")
+lmer.neff.LPS$p.adj <- p.adjust(lmer.neff.LPS$p.value, method = "fdr")
+
+lmer.neff.veh$comparison <- "Veh-LPS vs. veh-PBS"
+lmer.neff.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+lmer.neff.veh$delta <- lmer.neff.LPS$delta <- lmer.neff.veh$beta - lmer.neff.LPS$beta
+
+lmer.neff <- rbind(lmer.neff.veh, lmer.neff.LPS)
+lmer.neff[order(lmer.neff$p.value),]
+
+```
+
+
+```{r}
+# Plot module scores for class C genes that are upregulated in AD individuals
+lmer.neff.up <- lmer.neff[which(lmer.neff$pathway == "C_up"),]
+
+#lmer.neff.up$cell.type <- factor(lmer.neff.up$cell.type, levels = levels(hippo$cell.type2))
+idx <- which(lmer.neff.up$comparison == "Veh-LPS vs. veh-PBS")
+lmer.neff.up$cell.type <- factor(lmer.neff.up$cell.type, levels = lmer.neff.up$cell.type[idx][order(lmer.neff.up$delta[idx], decreasing = T)])
+
+lmer.neff.up$comparison <- factor(lmer.neff.up$comparison, levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+lmer.neff.up$p.symbol <- ""
+lmer.neff.up$p.symbol[which(lmer.neff.up$p.adj < 0.05)] <- "*"
+lmer.neff.up$p.symbol[which(lmer.neff.up$p.adj < 0.01)] <- "**"
+lmer.neff.up$p.symbol[which(lmer.neff.up$p.adj < 0.001)] <- "***"
+
+veh.signif <- lmer.neff.up[which(lmer.neff.up$comparison == "Veh-LPS vs. veh-PBS" & lmer.neff.up$p.symbol != ""),]
+veh.signif$x <- match(veh.signif$cell.type, levels(lmer.neff.up$cell.type))
+veh.signif$y <- veh.signif$beta + veh.signif$SE
+
+LPS.signif <- lmer.neff.up[which(lmer.neff.up$comparison == "Sema-LPS vs. veh-LPS" & lmer.neff.up$p.symbol != ""),]
+LPS.signif$x <- match(LPS.signif$cell.type, levels(lmer.neff.up$cell.type))
+LPS.signif$y <- LPS.signif$beta + LPS.signif$SE
+
+
+variable.names.up <- list("C_up" = "Upregulated genes in Class C AD individuals")
+
+variable_labeller_up <- function(variable, value){
+  return(variable.names.up[value])
+}
+
+
+lmer.neff.up.plot <- ggplot(lmer.neff.up, aes(x = cell.type, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_up) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm"),
+        strip.text = element_text(size=6, face="bold")) + 
+  ylab("\u03b2") + xlab("") + 
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1) +
+  geom_signif(y_position=c(veh.signif$y + 0.0001), xmin=veh.signif$x - 0.1,
+           xmax=veh.signif$x - 0.1, size = 0, textsize = 2,
+           annotation=veh.signif$p.symbol, fontface = "bold", colour = "#96C2D0") +
+  geom_signif(y_position=c(LPS.signif$y + 0.0001), xmin=LPS.signif$x + 0.1,
+            xmax=LPS.signif$x + 0.1, size = 0, textsize = 2,
+            annotation=LPS.signif$p.symbol, fontface = "bold", colour = "#FC6A03") +
+  scale_y_continuous(limits = c(-0.035, 0.025))
+  
+lmer.neff.up.plot
+```
+
+```{r}
+# Plot module scores for class C genes that are downregulated in AD individuals
+lmer.neff.down <- lmer.neff[which(lmer.neff$pathway == "C_down"),]
+
+#lmer.neff.down$cell.type <- factor(lmer.neff.down$cell.type, levels = levels(hippo$cell.type2))
+idx <- which(lmer.neff.down$comparison == "Veh-LPS vs. veh-PBS")
+lmer.neff.down$cell.type <- factor(lmer.neff.down$cell.type, levels = lmer.neff.down$cell.type[idx][order(lmer.neff.down$delta[idx], decreasing = F)])
+
+lmer.neff.down$comparison <- factor(lmer.neff.down$comparison, levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+lmer.neff.down$p.symbol <- ""
+lmer.neff.down$p.symbol[which(lmer.neff.down$p.adj < 0.05)] <- "*"
+lmer.neff.down$p.symbol[which(lmer.neff.down$p.adj < 0.01)] <- "**"
+lmer.neff.down$p.symbol[which(lmer.neff.down$p.adj < 0.001)] <- "***"
+
+veh.signif <- lmer.neff.down[which(lmer.neff.down$comparison == "Veh-LPS vs. veh-PBS" & lmer.neff.down$p.symbol != ""),]
+veh.signif$x <- match(veh.signif$cell.type, levels(lmer.neff.down$cell.type))
+veh.signif$y <- veh.signif$beta + veh.signif$SE
+
+LPS.signif <- lmer.neff.down[which(lmer.neff.down$comparison == "Sema-LPS vs. veh-LPS" & lmer.neff.down$p.symbol != ""),]
+LPS.signif$x <- match(LPS.signif$cell.type, levels(lmer.neff.down$cell.type))
+LPS.signif$y <- LPS.signif$beta + LPS.signif$SE
+
+
+variable.names.down <- list("C_down" = "Downregulated genes in Class C AD individuals")
+
+variable_labeller_down <- function(variable, value){
+  return(variable.names.down[value])
+}
+
+
+lmer.neff.down.plot <- ggplot(lmer.neff.down, aes(x = cell.type, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_down) +
+  theme_pubr() +
+  theme(axis.title.y = element_text(size=6, face="bold",
+                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm"),
+        strip.text = element_text(size=6, face="bold")) + 
+  ylab("\u03b2") + xlab("") + 
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1) +
+  geom_signif(y_position=c(veh.signif$y + 0.0001), xmin=veh.signif$x - 0.1,
+           xmax=veh.signif$x - 0.1, size = 0, textsize = 2,
+           annotation=veh.signif$p.symbol, fontface = "bold", colour = "#96C2D0") +
+  geom_signif(y_position=c(LPS.signif$y + 0.0001), xmin=LPS.signif$x + 0.1,
+            xmax=LPS.signif$x + 0.1, size = 0, textsize = 2,
+            annotation=LPS.signif$p.symbol, fontface = "bold", colour = "#FC6A03") +
+    scale_y_continuous(limits = c(-0.035, 0.025))
+
+lmer.neff.down.plot
+```
+
+# Combine all plots
+```{r}
+blank.plot <- ggplot() + geom_blank(aes(0.1, 0.1)) + 
+  cowplot::theme_nothing()
+
+
+plot1 <- plot_grid(blank.plot, AD.enrichment.plot,
+                   ncol = 2, align = "h", axis = "tb",                   
+                   rel_widths = c(1, 1)) 
+
+plot2 <- plot_grid(blank.plot, get_legend(lmer.AD.plot), blank.plot, get_legend(AD.genes.plot), blank.plot,
+                  ncol = 5, align = "h", axis = "tb",
+                  rel_widths = c(0.26, 1, 1, 1, 0.4))
+
+plot3 <- plot_grid(lmer.AD.plot + theme(legend.position = "none",
+                                        plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+                   AD.genes.plot + theme(legend.position = "none",
+                                         plot.margin = unit(c(0, 0, 0, 0.1), "cm")),
+                   ncol = 2, align = "h", axis = "tb",                   
+                   rel_widths = c(1, 1.6))
+
+plot4 <- plot_grid(blank.plot, 
+                   lmer.neff.up.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+                   lmer.neff.down.plot + theme(plot.margin = unit(c(0, 0, 0, 0.1), "cm")), 
+                   ncol = 3, align = "h", axis = "tb",                   
+                   rel_widths = c(0.7, 1, 1))
+
+
+# Margin: top, right, bottom, and left
+fig4 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")), 
+                  plot2 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                  plot3 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                  plot4 + theme(plot.margin = unit(c(0, 0, -0.4, 0), "cm")),
+                  ncol = 1, align = "v",                   
+                  rel_heights = c(1, 0.3, 1.4, 1.2))
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure4.png", fig4, height = 190, width = 183,
+       units = "mm")
+
+```
+
+
+

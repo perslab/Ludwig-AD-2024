@@ -1,0 +1,105 @@
+---
+title: "clustering_hippo_glia"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+# Load data
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj.rds")
+```
+
+# Subset glia
+```{r}
+hippo.glia <- subset(hippo, SCT_snn_res.0.1 %in% c(0, 2, 5, 8, 9, 10) | SCT_snn_res.1 == 38, invert = T)
+```
+
+# Normalize data
+```{r}
+# Normalize data
+hippo.glia <- SCTransform(hippo.glia, verbose = F, method = "qpoisson")
+```
+
+# Run PCA
+```{r}
+# PCA
+VariableFeatures(hippo.glia[["SCT"]]) <- rownames(hippo.glia[["SCT"]]@scale.data)
+hippo.glia <- RunPCA(hippo.glia, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo.glia, ndims = 100)
+```
+
+# Run UMAP
+```{r}
+# UMAP
+hippo.glia <- RunUMAP(hippo.glia, dims = 1:30, n.neighbors = 50)
+```
+
+# Find clusters
+```{r}
+hippo.glia <- FindNeighbors(hippo.glia, dims = 1:30, k.param = 50, verbose = F)
+hippo.glia <- FindClusters(hippo.glia, resolution = 0.1, verbose = F)
+hippo.glia <- FindClusters(hippo.glia, resolution = 1, verbose = F)
+```
+
+# Remove bad quality cells
+```{r}
+source("/projects/mludwig/hippo_GLP1/code/flag_clusters.R")
+
+flagged.clusters1 <- flag.clusters(seurat.obj = hippo.glia, 
+                                  genes = c("percent.mt", "Rbfox3"),
+                                  resolution = "SCT_snn_res.0.1", quantile = 0.95)
+
+
+flagged.clusters2 <- flag.clusters2(seurat.obj = hippo.glia, 
+                                    resolution = "SCT_snn_res.0.1", fraction = 0.75)
+
+flagged.clusters <- unique(c(flagged.clusters1, flagged.clusters2))
+```
+
+```{r}
+# Remove cluster 7 which contains neuronal markers 
+hippo.glia <- subset(hippo.glia, SCT_snn_res.0.1 == flagged.clusters, invert = T)
+
+# PCA
+VariableFeatures(hippo.glia[["SCT"]]) <- rownames(hippo.glia[["SCT"]]@scale.data)
+hippo.glia <- RunPCA(hippo.glia, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo.glia, ndims = 100)
+```
+
+```{r}
+# UMAP
+hippo.glia <- RunUMAP(hippo.glia, dims = 1:30, n.neighbors = 50)
+
+DimPlot(hippo.glia, group.by = "run", shuffle = T)
+```
+
+```{r}
+# Find clusters
+hippo.glia <- FindNeighbors(hippo.glia, dims = 1:30, k.param = 50, verbose = F)
+hippo.glia <- FindClusters(hippo.glia, resolution = 0.1, verbose = F)
+hippo.glia <- FindClusters(hippo.glia, resolution = 1, verbose = F)
+```
+
+```{r}
+hippo.glia@meta.data <- hippo.glia@meta.data[, c("nCount_RNA", "nFeature_RNA", "nCount_SCT", "nFeature_SCT",
+                                                 "percent.mt", "pool", "hash.ID", "treatment", "drug",
+                                                 "time", "run",  "SCT_snn_res.0.1", "SCT_snn_res.1")]
+saveRDS(hippo.glia,
+       file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj.rds")
+```

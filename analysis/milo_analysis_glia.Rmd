@@ -1,0 +1,563 @@
+---
+title: "milo_analysis_glia"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(miloR)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(dplyr)
+library(patchwork)
+library(Seurat)
+```
+
+# Load Seurat objects
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+hippo.glia$cell.type <- hippo.glia$cell.type2
+
+DVC.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj_labels.rds")
+```
+
+
+
+### Perform milo analysis for hippocampal glial cells (veh-LPS vs. veh-PBS) ###
+```{r}
+# Subset Seurat object
+groups <- c("Veh-PBS", "Veh-LPS")
+hippo.veh <- subset(hippo.glia, drug %in% groups)
+
+# Run PCA
+hippo.veh <- RunPCA(hippo.veh, verbose = F)
+
+# Select number of PCs
+ElbowPlot(hippo.veh, ndims = 50)
+
+DimPlot(hippo.veh, group.by = "cell.type", shuffle = T)
+DimPlot(hippo.veh, group.by = "drug", shuffle = T)
+DimPlot(hippo.veh, group.by = "time", shuffle = T)
+```
+
+# Create milo object
+```{r}
+hippo.veh.sce <- as.SingleCellExperiment(hippo.veh, assay = "SCT")
+hippo.veh.milo <- Milo(hippo.veh.sce)
+
+reducedDim(hippo.veh.milo, "UMAP") <- reducedDim(hippo.veh.sce, "UMAP")
+reducedDim(hippo.veh.milo, "PCA") <- reducedDim(hippo.veh.sce, "PCA")
+plotReducedDim(hippo.veh.milo, colour_by = "drug", dimred = "UMAP") 
+```
+
+# Construct KNN graph
+```{r}
+k <- 50
+d <- 30
+hippo.veh.milo <- buildGraph(hippo.veh.milo, k = k, d = d, reduced.dim = "PCA")
+```
+
+# Define representative neighbourhoods on the KNN graph
+```{r}
+hippo.veh.milo <- makeNhoods(hippo.veh.milo, prop = 0.1, k = k, d = d, refined = TRUE, reduced_dims = "PCA")
+plotNhoodSizeHist(hippo.veh.milo)
+```
+
+# Count cells in neighbourhoods
+```{r}
+hippo.veh.milo <- countCells(hippo.veh.milo, meta.data = as.data.frame(colData(hippo.veh.milo)), 
+                             samples = "hash.ID")
+head(nhoodCounts(hippo.veh.milo))
+```
+
+# Compute neighbourhood connectivity
+```{r}
+hippo.veh.milo <- calcNhoodDistance(hippo.veh.milo, d = d, reduced.dim = "PCA")
+```
+
+# Define experimental design
+```{r}
+design <- data.frame(colData(hippo.veh.milo))[, c("hash.ID", "drug", "time")]
+
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = groups)
+rownames(design) <- design$hash.ID
+```
+
+# Test
+```{r}
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results <- testNhoods(hippo.veh.milo, design = model, design.df = design, model.contrasts = "drugVeh.LPS")
+
+da.results %>% arrange(PValue) %>% head(n = 50)
+length(which(da.results$SpatialFDR < 0.05))
+```
+
+# InspectDA testing results
+```{r}
+hippo.veh$Neighboorhods <- "Non-altered"
+idx <- which(da.results$SpatialFDR < 0.05)
+
+if (length(idx) > 0) {
+  hippo.veh$Neighboorhods[which(apply(hippo.veh.milo@nhoods[, idx], 1, sum) > 0)] <- "Altered"
+  
+}
+
+DimPlot(hippo.veh, group.by = "Neighboorhods")
+
+ggplot(da.results, aes(PValue)) + geom_histogram(bins=50)
+
+ggplot(da.results, aes(logFC, -log10(SpatialFDR))) + 
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05)) # Mark significance threshold (5% FDR)
+```
+
+# Build and plot neighborhood graph
+```{r}
+hippo.veh.milo <- buildNhoodGraph(hippo.veh.milo)
+
+plotNhoodGraphDA(hippo.veh.milo, da.results, layout = "UMAP", alpha = 0.1, size = 2)
+```
+
+# Assign a cell type label to each neighbourhood by finding the most abundant cell type within cells in each neighbourhood
+```{r}
+da.results <- annotateNhoods(hippo.veh.milo, da.results, coldata_col = "cell.type")
+head(da.results)
+```
+
+W# hile neighbourhoods tend to be homogeneous, we can define a threshold for `celltype_fraction` to exclude neighbourhoods that are a mix of cell types
+```{r}
+ggplot(da.results, aes(cell.type_fraction)) + geom_histogram(bins=50)
+
+da.results$cell.type <- ifelse(da.results$cell.type_fraction < 0.7, "Mixed", da.results$cell.type)
+
+plotDAbeeswarm(da.results, group.by = "cell.type")
+
+cell.type.abundance <- data.frame(matrix(NA, nrow = length(unique(da.results$cell.type)), ncol = 2))
+colnames(cell.type.abundance) <- c("cell.type", "abundance")
+cell.type.abundance$cell.type <- unique(da.results$cell.type)
+
+for (i in 1:nrow(cell.type.abundance)) {
+  cell.type <- cell.type.abundance$cell.type[i]
+  
+  significant <- length(which(da.results$cell.type == cell.type & da.results$SpatialFDR < 0.05)) 
+  all <- length(which(da.results$cell.type == cell.type)) 
+
+  cell.type.abundance$abundance[i] <- significant / all
+  
+}
+
+cell.type.abundance[order(cell.type.abundance$abundance, decreasing = T),]
+```
+
+# Save milo object
+```{r}
+# saveRDS(hippo.veh.milo, file = "/projects/mludwig/hippo_GLP1/output/milo_objs/hippo_glia_veh_milo_obj.rds")
+```
+
+
+
+### Perform milo analysis for hippocampal glial cells (sema-LPS vs. veh-LPS) ###
+```{r}
+# Subset seurat object
+groups <- c("Veh-LPS", "Sema-LPS")
+hippo.LPS <- subset(hippo.glia, drug %in% groups)
+
+# Run PCA
+hippo.LPS <- RunPCA(hippo.LPS, verbose = F)
+
+# Select number of PCs
+ElbowPlot(hippo.LPS, ndims = 50)
+
+DimPlot(hippo.LPS, group.by = "cell.type", shuffle = T)
+DimPlot(hippo.LPS, group.by = "drug", shuffle = T)
+DimPlot(hippo.LPS, group.by = "time", shuffle = T)
+```
+
+# Create milo object
+```{r}
+hippo.LPS.sce <- as.SingleCellExperiment(hippo.LPS, assay = "SCT")
+hippo.LPS.milo <- Milo(hippo.LPS.sce)
+
+reducedDim(hippo.LPS.milo, "UMAP") <- reducedDim(hippo.LPS.sce, "UMAP")
+reducedDim(hippo.LPS.milo, "PCA") <- reducedDim(hippo.LPS.sce, "PCA")
+plotReducedDim(hippo.LPS.milo, colour_by = "drug", dimred = "UMAP") 
+```
+
+# Construct KNN graph
+```{r}
+k <- 50
+d <- 30
+hippo.LPS.milo <- buildGraph(hippo.LPS.milo, k = k, d = d, reduced.dim = "PCA")
+```
+
+# Define representative neighbourhoods on the KNN graph
+```{r}
+hippo.LPS.milo <- makeNhoods(hippo.LPS.milo, prop = 0.1, k = k, d = d, refined = TRUE, reduced_dims = "PCA")
+plotNhoodSizeHist(hippo.LPS.milo)
+```
+
+# Count cells in neighbourhoods
+```{r}
+hippo.LPS.milo <- countCells(hippo.LPS.milo, meta.data = as.data.frame(colData(hippo.LPS.milo)), 
+                             samples = "hash.ID")
+head(nhoodCounts(hippo.LPS.milo))
+```
+
+# Compute neighbourhood connectivity
+```{r}
+hippo.LPS.milo <- calcNhoodDistance(hippo.LPS.milo, d = d, reduced.dim = "PCA")
+```
+
+# Define experimental design
+```{r}
+design <- data.frame(colData(hippo.LPS.milo))[, c("hash.ID", "drug", "time")]
+
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = groups)
+rownames(design) <- design$hash.ID
+```
+
+# Test
+```{r}
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results <- testNhoods(hippo.LPS.milo, design = model, design.df = design, model.contrasts = "drugSema.LPS")
+
+da.results %>% arrange(PValue) %>% head(n = 50)
+length(which(da.results$SpatialFDR < 0.05))
+```
+
+# Inspect DA testing results
+```{r}
+hippo.LPS$Neighboorhods <- "Non-altered"
+idx <- which(da.results$SpatialFDR < 0.05)
+
+if (length(idx) > 0) {
+  hippo.LPS$Neighboorhods[which(apply(hippo.LPS.milo@nhoods[, idx], 1, sum) > 0)] <- "Altered"
+  
+}
+DimPlot(hippo.LPS, group.by = "Neighboorhods")
+
+ggplot(da.results, aes(PValue)) + geom_histogram(bins=50)
+
+ggplot(da.results, aes(logFC, -log10(SpatialFDR))) + 
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05)) # Mark significance threshold (5% FDR)
+```
+
+# Build and plot neighborhood graph
+```{r}
+hippo.LPS.milo <- buildNhoodGraph(hippo.LPS.milo)
+
+plotNhoodGraphDA(hippo.LPS.milo, da.results, layout = "UMAP", alpha = 0.1, size = 2)
+```
+
+# Assign a cell type label to each neighbourhood by finding the most abundant cell type within cells in each neighbourhood
+```{r}
+da.results <- annotateNhoods(hippo.LPS.milo, da.results, coldata_col = "cell.type")
+head(da.results)
+```
+
+# While neighbourhoods tend to be homogeneous, we can define a threshold for `celltype_fraction` to exclude neighbourhoods that are a mix of cell types 
+```{r}
+ggplot(da.results, aes(cell.type_fraction)) + geom_histogram(bins=50)
+
+da.results$cell.type <- ifelse(da.results$cell.type_fraction < 0.7, "Mixed", da.results$cell.type)
+plotDAbeeswarm(da.results, group.by = "cell.type")
+
+cell.type.abundance <- data.frame(matrix(NA, nrow = length(unique(da.results$cell.type)), ncol = 2))
+colnames(cell.type.abundance) <- c("cell.type", "abundance")
+cell.type.abundance$cell.type <- unique(da.results$cell.type)
+
+for (i in 1:nrow(cell.type.abundance)) {
+  cell.type <- cell.type.abundance$cell.type[i]
+  
+  significant <- length(which(da.results$cell.type == cell.type & da.results$SpatialFDR < 0.05)) 
+  all <- length(which(da.results$cell.type == cell.type)) 
+
+  cell.type.abundance$abundance[i] <- significant / all
+  
+}
+
+cell.type.abundance[order(cell.type.abundance$abundance, decreasing = T),]
+```
+
+# Save milo object
+```{r}
+# saveRDS(hippo.LPS.milo, file = "/projects/mludwig/hippo_GLP1/output/milo_objs/hippo_glia_LPS_milo_obj.rds")
+```
+
+
+
+### Perform milo analysis for DVC glial cells (veh-LPS vs. veh-PBS) ###
+```{r}
+# Subset Seurat object
+groups <- c("Veh-PBS", "Veh-LPS")
+DVC.veh <- subset(DVC.glia, drug %in% groups)
+
+# Run PCA
+DVC.veh <- RunPCA(DVC.veh, verbose = F)
+
+# Select number of PCs
+ElbowPlot(DVC.veh, ndims = 50)
+
+DimPlot(DVC.veh, group.by = "cell.type", shuffle = T)
+DimPlot(DVC.veh, group.by = "drug", shuffle = T)
+DimPlot(DVC.veh, group.by = "time", shuffle = T)
+```
+
+# Create milo object
+```{r}
+DVC.veh.sce <- as.SingleCellExperiment(DVC.veh, assay = "SCT")
+DVC.veh.milo <- Milo(DVC.veh.sce)
+
+reducedDim(DVC.veh.milo, "UMAP") <- reducedDim(DVC.veh.sce, "UMAP")
+reducedDim(DVC.veh.milo, "PCA") <- reducedDim(DVC.veh.sce, "PCA")
+plotReducedDim(DVC.veh.milo, colour_by = "drug", dimred = "UMAP") 
+```
+
+# Construct KNN graph
+```{r}
+k <- 50
+d <- 30
+DVC.veh.milo <- buildGraph(DVC.veh.milo, k = k, d = d, reduced.dim = "PCA")
+```
+
+# Define representative neighbourhoods on the KNN graph
+```{r}
+DVC.veh.milo <- makeNhoods(DVC.veh.milo, prop = 0.1, k = k, d = d, refined = TRUE, reduced_dims = "PCA")
+plotNhoodSizeHist(DVC.veh.milo)
+```
+
+# Count cells in neighbourhoods
+```{r}
+DVC.veh.milo <- countCells(DVC.veh.milo, meta.data = as.data.frame(colData(DVC.veh.milo)), 
+                             samples = "hash.ID")
+head(nhoodCounts(DVC.veh.milo))
+```
+
+# Compute neighbourhood connectivity
+```{r}
+DVC.veh.milo <- calcNhoodDistance(DVC.veh.milo, d = d, reduced.dim = "PCA")
+```
+
+# Define experimental design
+```{r}
+design <- data.frame(colData(DVC.veh.milo))[, c("hash.ID", "drug", "time")]
+
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = groups)
+rownames(design) <- design$hash.ID
+```
+
+# Test
+```{r}
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results <- testNhoods(DVC.veh.milo, design = model, design.df = design, model.contrasts = "drugVeh.LPS")
+
+da.results %>% arrange(PValue) %>% head(n = 50)
+length(which(da.results$SpatialFDR < 0.05))
+```
+
+# Inspect DA testing results
+```{r}
+DVC.veh$Neighboorhods <- "Non-altered"
+idx <- which(da.results$SpatialFDR < 0.05)
+
+if (length(idx) > 0) {
+  DVC.veh$Neighboorhods[which(apply(DVC.veh.milo@nhoods[, idx], 1, sum) > 0)] <- "Altered"
+  
+}
+DimPlot(DVC.veh, group.by = "Neighboorhods")
+
+ggplot(da.results, aes(PValue)) + geom_histogram(bins=50)
+
+ggplot(da.results, aes(logFC, -log10(SpatialFDR))) + 
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05)) # Mark significance threshold (5% FDR)
+```
+
+# Build and plot neighborhood graph
+```{r}
+DVC.veh.milo <- buildNhoodGraph(DVC.veh.milo)
+
+plotNhoodGraphDA(DVC.veh.milo, da.results, layout = "UMAP", alpha = 0.1, size = 2)
+```
+
+# Assign a cell type label to each neighbourhood by finding the most abundant cell type within cells in each neighbourhood
+```{r}
+da.results <- annotateNhoods(DVC.veh.milo, da.results, coldata_col = "cell.type")
+head(da.results)
+```
+
+# While neighbourhoods tend to be homogeneous, we can define a threshold for `celltype_fraction` to exclude neighbourhoods that are a mix of cell types
+```{r}
+ggplot(da.results, aes(cell.type_fraction)) + geom_histogram(bins=50)
+
+da.results$cell.type <- ifelse(da.results$cell.type_fraction < 0.7, "Mixed", da.results$cell.type)
+
+plotDAbeeswarm(da.results, group.by = "cell.type")
+
+cell.type.abundance <- data.frame(matrix(NA, nrow = length(unique(da.results$cell.type)), ncol = 2))
+colnames(cell.type.abundance) <- c("cell.type", "abundance")
+cell.type.abundance$cell.type <- unique(da.results$cell.type)
+
+for (i in 1:nrow(cell.type.abundance)) {
+  cell.type <- cell.type.abundance$cell.type[i]
+  
+  significant <- length(which(da.results$cell.type == cell.type & da.results$SpatialFDR < 0.05)) 
+  all <- length(which(da.results$cell.type == cell.type)) 
+
+  cell.type.abundance$abundance[i] <- significant / all
+  
+}
+
+cell.type.abundance[order(cell.type.abundance$abundance, decreasing = T),]
+```
+
+# Save milo object
+```{r}
+# saveRDS(DVC.veh.milo, file = "/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_glia_veh_milo_obj.rds")
+```
+
+
+
+### Perform milo analysis for DVC glial cells (sema-LPS vs. veh-LPS) ###
+```{r}
+# Subset seurat object
+groups <- c("Veh-LPS", "Sema-LPS")
+DVC.LPS <- subset(DVC.glia, drug %in% groups)
+
+# Run PCA
+DVC.LPS <- RunPCA(DVC.LPS, verbose = F)
+
+# Select number of PCs
+ElbowPlot(DVC.LPS, ndims = 50)
+
+DimPlot(DVC.LPS, group.by = "cell.type", shuffle = T)
+DimPlot(DVC.LPS, group.by = "drug", shuffle = T)
+DimPlot(DVC.LPS, group.by = "time", shuffle = T)
+```
+
+# Create milo object
+```{r}
+DVC.LPS.sce <- as.SingleCellExperiment(DVC.LPS, assay = "SCT")
+DVC.LPS.milo <- Milo(DVC.LPS.sce)
+
+reducedDim(DVC.LPS.milo, "UMAP") <- reducedDim(DVC.LPS.sce, "UMAP")
+reducedDim(DVC.LPS.milo, "PCA") <- reducedDim(DVC.LPS.sce, "PCA")
+plotReducedDim(DVC.LPS.milo, colour_by = "drug", dimred = "UMAP") 
+```
+
+# Construct KNN graph
+```{r}
+k <- 50
+d <- 30
+DVC.LPS.milo <- buildGraph(DVC.LPS.milo, k = k, d = d, reduced.dim = "PCA")
+```
+
+# Define representative neighbourhoods on the KNN graph
+```{r}
+DVC.LPS.milo <- makeNhoods(DVC.LPS.milo, prop = 0.1, k = k, d = d, refined = TRUE, reduced_dims = "PCA")
+plotNhoodSizeHist(DVC.LPS.milo)
+```
+
+# Count cells in neighbourhoods
+```{r}
+DVC.LPS.milo <- countCells(DVC.LPS.milo, meta.data = as.data.frame(colData(DVC.LPS.milo)), 
+                             samples = "hash.ID")
+head(nhoodCounts(DVC.LPS.milo))
+```
+
+# Compute neighbourhood connectivity
+```{r}
+DVC.LPS.milo <- calcNhoodDistance(DVC.LPS.milo, d = d, reduced.dim = "PCA")
+```
+
+# Define experimental design
+```{r}
+design <- data.frame(colData(DVC.LPS.milo))[, c("hash.ID", "drug", "time")]
+
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = groups)
+rownames(design) <- design$hash.ID
+```
+
+# Test
+```{r}
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results <- testNhoods(DVC.LPS.milo, design = model, design.df = design, model.contrasts = "drugSema.LPS")
+
+da.results %>% arrange(PValue) %>% head(n = 50)
+length(which(da.results$SpatialFDR < 0.05))
+```
+
+# Inspect DA testing results
+```{r}
+DVC.LPS$Neighboorhods <- "Non-altered"
+idx <- which(da.results$SpatialFDR < 0.05)
+
+if (length(idx) > 0) {
+  DVC.LPS$Neighboorhods[which(apply(DVC.LPS.milo@nhoods[, idx], 1, sum) > 0)] <- "Altered"
+  
+}
+DimPlot(DVC.LPS, group.by = "Neighboorhods")
+
+ggplot(da.results, aes(PValue)) + geom_histogram(bins=50)
+
+ggplot(da.results, aes(logFC, -log10(SpatialFDR))) + 
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05)) # Mark significance threshold (5% FDR)
+```
+
+# Build and plot neighborhood graph
+```{r}
+DVC.LPS.milo <- buildNhoodGraph(DVC.LPS.milo)
+
+plotNhoodGraphDA(DVC.LPS.milo, da.results, layout = "UMAP", alpha = 0.1, size = 2)
+```
+
+# Assign a cell type label to each neighbourhood by finding the most abundant cell type within cells in each neighbourhood
+```{r}
+da.results <- annotateNhoods(DVC.LPS.milo, da.results, coldata_col = "cell.type")
+head(da.results)
+```
+
+# While neighbourhoods tend to be homogeneous, we can define a threshold for `celltype_fraction` to exclude neighbourhoods that are a mix of cell types
+```{r}
+ggplot(da.results, aes(cell.type_fraction)) + geom_histogram(bins=50)
+
+da.results$cell.type <- ifelse(da.results$cell.type_fraction < 0.7, "Mixed", da.results$cell.type)
+plotDAbeeswarm(da.results, group.by = "cell.type")
+
+cell.type.abundance <- data.frame(matrix(NA, nrow = length(unique(da.results$cell.type)), ncol = 2))
+colnames(cell.type.abundance) <- c("cell.type", "abundance")
+cell.type.abundance$cell.type <- unique(da.results$cell.type)
+
+for (i in 1:nrow(cell.type.abundance)) {
+  cell.type <- cell.type.abundance$cell.type[i]
+  
+  significant <- length(which(da.results$cell.type == cell.type & da.results$SpatialFDR < 0.05)) 
+  all <- length(which(da.results$cell.type == cell.type)) 
+
+  cell.type.abundance$abundance[i] <- significant / all
+  
+}
+
+cell.type.abundance[order(cell.type.abundance$abundance, decreasing = T),]
+```
+
+# Save milo object
+```{r}
+# saveRDS(DVC.LPS.milo, file = "/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_glia_LPS_milo_obj.rds")
+```
+

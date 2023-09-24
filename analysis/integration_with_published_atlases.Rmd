@@ -1,0 +1,451 @@
+---
+title: "integration_with_published_atlases"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(anndata)
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(cluster)
+library(parallelDist)
+library(doMC)
+library(Seurat)
+source("/projects/mludwig/Ludwig-2021/Ludwig-2021/code/compute_sil.R")
+```
+
+# Load Seurat objects
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj.rds")
+hippo.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj.rds")
+```
+
+# Preprocess Duan et al. (Neuron, 2018)
+```{r}
+# Load Seurat obj
+duan <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs_publications/Duan_Seurat_obj.rds")
+
+# Normalize
+duan <- SCTransform(duan, verbose = FALSE)
+
+# Define major cell type identities
+duan$cell.type <- "Unknown"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(21))] <- "Pericytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(23))] <- "Pericytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(17))] <- "VLMCs"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(13))] <- "Microglia"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(3))] <- "Endothelial_cells"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(5))] <- "Endothelial_cells"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(0))] <- "Astrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(24))] <- "Astrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(18))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(1))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(4))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(8))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(10))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(11))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(20))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(14))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(15))] <- "Astrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(7))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(22))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(29))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(19))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(6))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(25))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(9))] <- "Oligodendrocytes"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(26))] <- "Ependymal_cells"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(2))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(12))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(16))] <- "Neurons"
+duan$cell.type[which(duan$RNA_snn_res.1 %in% c(28))] <- "Neurons"
+
+# Define minor cell type identities
+duan$cell.type2 <- "Unknown"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(21))] <- "Pericytes1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(23))] <- "Pericytes2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(17))] <- "VLMCs"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(13))] <- "Microglia"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(3))] <- "Endothelial_cells1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(5))] <- "Endothelial_cells2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(0))] <- "Astrocytes1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(24))] <- "Astrocytes2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(18))] <- "Spock1_neurons"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(1))] <- "Nrgn_neurons1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(4))] <- "Nrgn_neurons2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(8))] <- "Nrgn_neurons3"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(10))] <- "Nrgn_neurons4"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(11))] <- "Nrgn_neurons5"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(20))] <- "Nrgn_neurons6"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(14))] <- "Reln_neurons"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(15))] <- "Tfap2c_cells"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(7))] <- "Mobp_oligodendrocytes1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(22))] <- "Mobp_oligodendrocytes2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(29))] <- "Mobp_oligodendrocytes3"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(19))] <- "Bcas1_oligodendrocytes"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(6))] <- "C1ql1_oligodendrocytes1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(25))] <- "C1ql1_oligodendrocytes2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(9))] <- "Enpp2_oligodendrocytes"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(26))] <- "Ependymal_cells"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(2))] <- "Unknown_neurons1"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(12))] <- "Unknown_neurons2"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(16))] <- "Unknown_neurons3"
+duan$cell.type2[which(duan$RNA_snn_res.1 %in% c(28))] <- "Unknown_neurons4"
+
+# Save
+# saveRDS(duan, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs_publications/Duan_Seurat_obj_labels.rds")
+```
+
+# Transfer labels from Duan atlas
+```{r}
+duan <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs_publications/Duan_Seurat_obj_labels.rds")
+
+# Subset Duan atlas to glial cells
+duan.glia <- subset(duan, cell.type != "Neurons")
+
+# Normalize 
+duan.glia <- SCTransform(duan.glia, verbose = F, method = "qpoisson")
+
+# Run dimensionality reduction
+duan.glia <- RunPCA(duan.glia, verbose = F)
+ElbowPlot(duan.glia, ndims = 50)
+duan.glia <- RunUMAP(duan.glia, dims = 1:30, n.neighbors = 50)
+
+# Transfer labels to hippocampal glial atlas
+anchors <- FindTransferAnchors(reference = duan.glia, query = hippo.glia, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = duan.glia$cell.type2, 
+    dims = 1:30)
+
+hippo.glia$duan.predictions <- predictions$predicted.id
+hippo.glia$duan.score <- predictions$prediction.score.max
+
+DimPlot(hippo.glia, group.by = "duan.predictions", label = T)
+```
+# Label cell type identities 
+```{r}
+hippo.glia$cell.type <- ""
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(0, 2, 8))] <- "Mobp_oligodendrocytes"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(1))] <- "Astrocytes"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(3))] <- "Microglia"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 == 7)] <- "Unknown_glia"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.1 == 21)] <- "Pericytes2"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.1 == 25)] <- "VLMCs"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(5) &
+                            hippo.glia$SCT_snn_res.1 == "18")] <- "Pericytes1"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(5) &
+                            hippo.glia$SCT_snn_res.1 != "18")] <- "Endothelial_cells"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(4) &
+                              hippo.glia$SCT_snn_res.1 != 19)] <- "C1ql1_oligodendrocytes"
+hippo.glia$cell.type[which(hippo.glia$SCT_snn_res.0.1 %in% c(4) &
+                              hippo.glia$SCT_snn_res.1 == 19)] <- "Bcas1_oligodendrocytes"
+
+hippo.glia$cell.type <- factor(hippo.glia$cell.type, levels = c("Astrocytes", "Bcas1_oligodendrocytes",
+                                                                "C1ql1_oligodendrocytes", "Endothelial_cells",
+                                                                "Microglia", "Mobp_oligodendrocytes",
+                                                                "Pericytes1", "Pericytes2", 
+                                                                "Unknown_glia", "VLMCs"))
+```
+
+# Compute silhouette scores to identify optimal clustering resolution
+```{r}
+resolution <- seq(0.1, 1, 0.1)
+
+pc <- hippo.glia@reductions$pca@cell.embeddings[, 1:30]
+distance <- parDist(pc, method = "euclidean")
+
+cluster.id <- as.character(hippo.glia@meta.data[, "cell.type"])
+silhouette.cell.type <- compute.sil(x = cluster.id, dist = distance)
+
+print(mean(silhouette.cell.tyoe))
+
+stability <- data.frame(matrix(NA, nrow = ncol(hippo.glia), ncol = length(resolution)))
+colnames(stability) <- resolution
+rownames(stability) <- colnames(hippo.glia)
+
+for(i in 1:length(resolution)) {
+  print(i)
+
+  hippo.glia <- FindClusters(object = hippo.glia, resolution = resolution[i],
+                         verbose = F)
+  cluster.id <- as.numeric(as.character(hippo.glia@meta.data[, paste0("SCT_snn_res.", resolution[i])]))
+
+  silhouette <- compute.sil(x = cluster.id, dist = distance)
+
+  print(mean(silhouette))
+
+  stability[,i] <- silhouette
+
+}
+stability <- cbind(cell.type = silhouette.cell.type, stability)
+
+# Save
+# saveRDS(stability, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/silhouette_glia.rds")
+stability <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/silhouette_glia.rds")
+
+# Plot
+stability$cell <- rownames(stability)
+stability.melt <- reshape2::melt(stability, id.vars = "cell")
+stability.melt$variable <- gsub("cell.type", "Duan labels", stability.melt$variable)
+
+ggplot(stability.melt) +
+  geom_boxplot(aes(x = variable, y = value), outlier.shape = NA, fill = "darkcyan") +
+  theme_pubr() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("Resolution") + ylab("Silhouette score") +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.25))
+```
+
+# Preprocess Posner et al. (Current Opinion in Immunology, 2022)
+```{r}
+# # Load anndata obj
+# posner.h5ad <- read_h5ad("/scratch/mlf210/CNSbordercellatlas_Dec22.h5ad")
+# 
+# # Convert anndata obj to Seurat obj
+# posner.counts <- rbind(as.matrix(posner.h5ad[["X"]][1:65000, ]),
+#                        as.matrix(posner.h5ad[["X"]][65001:nrow(posner.h5ad[["X"]]), ]))
+#  
+# posner.counts <- t(posner.counts)
+#  
+# posner <- CreateSeuratObject(posner.counts, meta.data = posner.h5ad[["obs"]])
+# rm(posner.counts)
+# rm(posner.h5ad)
+#  
+# # Normalize 
+# posner <- SCTransform(posner, verbose = F, method = "qpoisson")
+# 
+# # Run dimensionality reduction
+# posner <- RunPCA(posner, verbose = F)
+# ElbowPlot(posner, ndims = 50)
+# posner <- RunUMAP(posner, dims = 1:30, n.neighbors = 50)
+# 
+# # Run clustering
+# posner <- FindNeighbors(posner, dims = 1:30, k.param = 50)
+# posner <- FindClusters(posner, resolution = 0.1, verbose = F)
+# 
+# # Save
+# saveRDS(posner, file = "projects/mludwig/hippo_GLP1/output/Seurat_objs_publications/Posner_Seurat_obj.rds")
+```
+
+
+# Transfer labels from Posner atlas
+```{r}
+posner <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs_publications/Posner_Seurat_obj.rds")
+
+anchors <- FindTransferAnchors(reference = posner, query = hippo.glia, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = posner$celltype, 
+    dims = 1:30)
+saveRDS(predictions, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/Posner_predictions.rds")
+
+hippo.glia$posner.predictions <- predictions$predicted.id
+hippo.glia$posner.score <- predictions$prediction.score.max
+
+DimPlot(hippo.glia, group.by = "posner.predictions", label = T)
+
+# Update the labels
+hippo.glia$cell.type2 <- hippo.glia$cell.type
+hippo.glia$cell.type2 <- gsub("Unknown_glia", "Neutrophils", hippo.glia$cell.type2)
+
+hippo.glia$cell.type2 <- factor(hippo.glia$cell.type2, levels = c("Astrocytes",
+                                                                  "Bcas1_oligodendrocytes",
+                                                                  "C1ql1_oligodendrocytes",
+                                                                  "Endothelial_cells",
+                                                                  "Microglia", 
+                                                                  "Mobp_oligodendrocytes",
+                                                                  "Neutrophils", 
+                                                                  "Pericytes1", 
+                                                                  "Pericytes2", 
+                                                                  "VLMCs"))
+```
+
+
+# Save
+```{r}
+hippo.glia@meta.data  <- hippo.glia@meta.data[, c("nCount_RNA", "nFeature_RNA", 
+                                                  "nCount_SCT", "nFeature_SCT",
+                                                  "percent.mt", "pool", "hash.ID", 
+                                                  "treatment", "drug", "time", "run", 
+                                                  "SCT_snn_res.0.1", "SCT_snn_res.1",
+                                                  "duan.predictions", "duan.score",
+                                                  "cell.type", "cell.type2")]
+# saveRDS(hippo.glia, 
+#         file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+```
+
+
+# Preprocess Smart-seq data Yao et al. (Cell, 2021)
+```{r}
+# Load Seurat object
+load("/projects/mludwig/hippo_GLP1/data/2021_Yao/Seurat.ss.rda")
+
+# Subset yao atlas to hippocampal neurons
+yao <- subset(ss.seurat, region_label == "HIP" & class_label != "Non-Neuronal")
+
+# Normalize 
+yao <- SCTransform(yao, verbose = F, method = "qpoisson")
+
+# Run dimensionality reduction
+yao <- RunPCA(yao, verbose = F)
+ElbowPlot(yao, ndims = 50)
+yao <- RunUMAP(yao, dims = 1:30, n.neighbors = 50)
+
+# Run clustering
+yao <- FindNeighbors(yao, dims = 1:30, k.param = 50)
+yao <- FindClusters(yao, resolution = 0.1, verbose = F)
+
+DimPlot(yao, group.by = "class_label")
+DimPlot(yao, group.by = "subclass_label", label = T)
+DimPlot(yao, group.by = "region_label", label = T)
+```
+
+# Transfer labels from Yao data
+```{r}
+anchors <- FindTransferAnchors(reference = yao, query = hippo.neurons, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = yao$subclass_label, 
+    dims = 1:30)
+
+hippo.neurons$yao.predictions <- predictions$predicted.id
+hippo.neurons$yao.score <- predictions$predicted.id
+
+DimPlot(hippo.neurons, group.by = "yao.predictions", label = T) 
+DimPlot(hippo.neurons, group.by = "cell.type", label = T)
+DimPlot(hippo.neurons, group.by = "SCT_snn_res.1", label = T)
+```
+
+# Label cell type identities 
+```{r}
+hippo.neurons$cell.type <- paste0("Neurons", hippo.neurons$SCT_snn_res.0.1)
+hippo.neurons$cell.type <- factor(hippo.neurons$cell.type, 
+                                  levels =  paste0("Neurons", sort(unique(hippo.neurons$SCT_snn_res.0.1))))
+
+
+hippo.neurons$cell.type2 <- ""
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 17)] <- "Vip"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 15)] <- "Sncg"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 %in% c(14, 22))] <- "Lamp5"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 12)] <- "Sst"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 16)] <- "Pvalb"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 %in% c(0, 1, 2, 4, 5,
+                                                                  9, 13, 21, 24))] <- "DG"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 %in% c(3, 6, 8))] <- "CA1"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 %in% c(7, 11, 18, 23))] <- "CA3"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 19)] <- "SUB"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 20)] <- "ProS"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.1 == 10)] <- "CA2/CA3"
+
+DimPlot(hippo.neurons, group.by = "cell.type2", label = T)
+```
+
+
+# Compute silhouette scores to identify optimal clustering resolution
+```{r}
+resolution <- seq(0.1, 1, 0.1)
+
+pc <- hippo.neurons@reductions$pca@cell.embeddings[, 1:30]
+distance <- parDist(pc, method = "euclidean")
+
+cluster.id <- as.character(hippo.neurons@meta.data[, "cell.type2"])
+silhouette.cell.type <- compute.sil(x = cluster.id, dist = distance)
+
+
+stability <- data.frame(matrix(NA, nrow = ncol(hippo.neurons), ncol = length(resolution)))
+colnames(stability) <- resolution
+rownames(stability) <- colnames(hippo.neurons)
+
+for(i in 1:length(resolution)) {
+  print(i)
+
+  hippo.neurons <- FindClusters(object = hippo.neurons, resolution = resolution[i],
+                         verbose = F)
+  cluster.id <- as.numeric(as.character(hippo.neurons@meta.data[, paste0("SCT_snn_res.", resolution[i])]))
+
+  silhouette <- compute.sil(x = cluster.id, dist = distance)
+
+  print(mean(silhouette))
+
+  stability[,i] <- silhouette
+
+}
+
+stability <- cbind(cell.type = silhouette.cell.type, stability)
+
+# saveRDS(stability, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/silhouette_neurons.rds")
+stability <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/silhouette_neurons.rds")
+
+stability$cell <- rownames(stability)
+stability.melt <- reshape2::melt(stability, id.vars = "cell")
+stability.melt$variable <- gsub("cell.type", "Yao labels", stability.melt$variable)
+
+ggplot(stability.melt) +
+  geom_boxplot(aes(x = variable, y = value), outlier.shape = NA, fill = "darkcyan") +
+  theme_pubr() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  xlab("Resolution") + ylab("Silhouette score") +
+  scale_y_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.25))
+
+```
+
+# Update cell type labels at optimal clustering resolution
+```{r}
+cellex <- read.csv(gzfile("/projects/mludwig/hippo_GLP1/output/cellex/output/hippo_neurons_mm.esmu.csv.gz"), row.names = 1)
+
+neuron.markers <- data.frame(matrix(NA, nrow = length(levels(hippo.neurons$cell.type)), ncol = 4))
+colnames(neuron.markers) <- c("cell.type", "marker1", "marker2", "marker3")
+neuron.markers$cell.type <- levels(hippo.neurons$cell.type)
+  
+# Plot marker gene expression
+for (i in 1:nrow(neuron.markers)) {
+  
+  neuron.cell.type <- neuron.markers$cell.type[i]
+  
+  
+  idx <- which(hippo.neurons$cell.type == neuron.cell.type)
+    
+  genes.ordered <- rownames(cellex)[order(cellex[, neuron.cell.type], decreasing = T)]
+  genes.ordered <- genes.ordered[!(grepl("^Gm[0-9]|^ENSMUS|[0-9]Rik$", genes.ordered))]
+  
+  z <- 2
+  for (j in genes.ordered) {
+    
+    nonzero.counts <- which(hippo.neurons@assays$RNA@counts[j, idx] != 0)
+    nonzero.pct <- length(nonzero.counts) / length(idx) * 100
+    
+    if (nonzero.pct >= 25) {
+      neuron.markers[i, z] <- j
+      z <- z + 1
+    }
+    if (z > 4)  {
+      break
+    }
+  }
+}
+
+neuron.markers
+
+hippo.neurons$cell.type2 <- ""
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 0)] <- "Glis3_DG_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 1)] <- "Satb2_CA1_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 2)] <- "Cd109_CA3_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 3)] <- "Crhbp_MGE_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 4)] <- "Lhx1_CA2/CA3_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 5)] <- "Htr3a_CGE_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 6)] <- "Igfbpl1_DG_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 7)] <- "Sfta3-ps_CGE_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 8)] <- "Csf2rb2_CA3_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 9)] <- "Abca12_Subiculum_neurons"
+hippo.neurons$cell.type2[which(hippo.neurons$SCT_snn_res.0.1 == 10)] <- "Nts_Prosubiculum_neurons"
+```
+
+# Save
+```{r}
+# saveRDS(hippo.neurons, 
+#         file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj_labels.rds")
+```

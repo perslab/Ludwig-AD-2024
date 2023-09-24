@@ -1,0 +1,81 @@
+---
+title: "merge_hippo_glia_and_neurons"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+```
+
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj.rds")
+
+hippo.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj_labels.rds")
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+
+hippo <-  subset(hippo, cells = which(colnames(hippo) %in% c(colnames(hippo.neurons), colnames(hippo.glia))))
+
+
+hippo$cell.type <- ""
+
+hippo$cell.type[which(colnames(hippo) %in% colnames(hippo.glia))] <- as.character(hippo.glia$cell.type[na.omit(match(colnames(hippo), colnames(hippo.glia)))])
+
+hippo$cell.type[which(colnames(hippo) %in% colnames(hippo.neurons))] <- as.character(hippo.neurons$cell.type[na.omit(match(colnames(hippo), colnames(hippo.neurons)))])
+  
+hippo$cell.type <- factor(hippo$cell.type, levels = c("Astrocytes", "Bcas1_oligodendrocytes",
+                                                      "C1ql1_oligodendrocytes", "Endothelial_cells",
+                                                      "Microglia", "Mobp_oligodendrocytes",
+                                                      "Pericytes1", "Pericytes2",
+                                                      "Unknown_glia", "VLMCs",
+                                                      paste0("Neurons", c(0:10))))
+
+hippo$cell.type2 <- ""
+
+hippo$cell.type2[which(colnames(hippo) %in% colnames(hippo.glia))] <- as.character(hippo.glia$cell.type2[na.omit(match(colnames(hippo), colnames(hippo.glia)))])
+
+hippo$cell.type2[which(colnames(hippo) %in% colnames(hippo.neurons))] <- as.character(hippo.neurons$cell.type2[na.omit(match(colnames(hippo), colnames(hippo.neurons)))])
+  
+hippo$cell.type2 <- factor(hippo$cell.type2, levels = c("Astrocytes",
+                                                        "Bcas1_oligodendrocytes",
+                                                        "C1ql1_oligodendrocytes",
+                                                        "Endothelial_cells",
+                                                        "Microglia", 
+                                                        "Mobp_oligodendrocytes",
+                                                        "Neutrophils", 
+                                                        "Pericytes1", 
+                                                        "Pericytes2", 
+                                                        "VLMCs",
+                                                        "Abca12_Subiculum_neurons",
+                                                        "Cd109_CA3_neurons",
+                                                        "Crhbp_MGE_neurons",
+                                                        "Csf2rb2_CA3_neurons",
+                                                        "Glis3_DG_neurons",
+                                                        "Htr3a_CGE_neurons",
+                                                        "Igfbpl1_DG_neurons",
+                                                        "Lhx1_CA2/CA3_neurons",
+                                                        "Nts_Prosubiculum_neurons",
+                                                        "Satb2_CA1_neurons",
+                                                        "Sfta3-ps_CGE_neurons"))
+
+
+# PCA
+VariableFeatures(hippo[["SCT"]]) <- rownames(hippo[["SCT"]]@scale.data)
+hippo <- RunPCA(hippo, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo, ndims = 100)
+
+# UMAP
+hippo <- RunUMAP(hippo, dims = 1:30, n.neighbors = 50)
+
+DimPlot(hippo, group.by = "cell.type2", shuffle = T)
+
+saveRDS(hippo,
+       file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/new_hippo_Seurat_obj_labels.rds")
+```
+

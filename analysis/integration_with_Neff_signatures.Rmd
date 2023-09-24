@@ -1,0 +1,120 @@
+---
+title: "integration_with_Neff_signatures"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(readxl)
+```
+
+# Load Neff et al. data
+```{r}
+path <- "/projects/mludwig/hippo_GLP1/data/2021_Neff/DEGs_Neff.xlsx"
+sheetnames <- excel_sheets(path)
+sheets2 <- lapply(excel_sheets(path), read_excel, path = path)
+names(sheets2)
+names(sheets2) <- gsub(" ", "_", sheetnames)
+
+MEGENA <- sheets2[["MEGENA_keydrivers"]]
+Signatures <- sheets2[["Signatures"]]
+
+genes.blue.up <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "blue_up")]
+genes.blue.dn <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "blue_dn")]
+
+genes.red.up <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "red_up")]
+genes.red.dn <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "red_dn")]
+
+genes.orange.up <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "orange_up")]
+genes.orange.dn <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "orange_dn")]
+
+genes.yellow.up <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "yellow_up")]
+genes.yellow.dn <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "yellow_dn")]
+
+genes.turquoise.up <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "turquoise_up")]
+genes.turquoise.dn <- MEGENA$`Table S2. MEGENA Keydrivers for MSBB-AD AD Subtypes, listed by subtype color (see Figure 1) and direction of expression change. (Yellow = A, Red = B1, Blue=B2, Turquoise = C1, Orange = C2).`[which(MEGENA$...2 == "turquoise_dn")]
+
+neff.modules <- list(genes.yellow.up, genes.yellow.dn,
+                     genes.red.up, genes.red.dn,
+                     genes.blue.up, genes.blue.dn,
+                     genes.turquoise.up, genes.turquoise.dn,
+                     genes.orange.up, genes.orange.dn)
+names(neff.modules) <- c("A_up", "A_down", "B1_up", "B1_down",
+                         "B2_up", "B2_down", "C1_up", "C1_down",
+                         "C2_up", "C2_down")
+```
+
+
+# Map to mouse genes
+```{r}
+human.mouse.mapping <- read.csv("/projects/mludwig/hippo_GLP1/data/gene_info/human_mouse_mapping.csv")
+
+# Map mouse gene name to human gene ID
+mapping <- human.mouse.mapping[, c("human.gene.name", "mouse.gene.name")]
+mapping <- subset(mapping, complete.cases(mapping))
+mapping <- mapping[mapping$human.gene.name != "" & mapping$mouse.gene.name != "",]
+mapping <- mapping[!(duplicated(mapping)),]
+duplicated.human.gene <- mapping$human.gene.ID[duplicated(mapping$human.gene.name)]
+duplicated.mouse.gene <- mapping$mouse.gene.name[duplicated(mapping$mouse.gene.name)]
+
+# Keep only 1-1 mapping
+mapping <- mapping[!(mapping$human.gene.name %in% duplicated.human.gene),]
+mapping <- mapping[!(mapping$mouse.gene.name %in% duplicated.mouse.gene),]
+
+# Map Neff modules to mouse
+neff.modules.mouse <- neff.modules
+for(i in 1:length(neff.modules.mouse)) {
+  genes.human <- neff.modules.mouse[[i]]
+  genes.mouse <- mapping$mouse.gene.name[which(mapping$human.gene.name %in% genes.human)]
+  neff.modules.mouse[[i]] <- genes.mouse
+}
+
+saveRDS(neff.modules.mouse, file = "/projects/mludwig/hippo_GLP1/data/2021_Neff/modules_mm_Neff.rds")
+```
+
+
+# Load Seurat objects
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+# DVC <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj_labels.rds")
+```
+
+
+# Compute module scores
+```{r}
+C_up <- union(neff.modules.mouse$C1_up, neff.modules.mouse$C2_up)
+C_down <- union(neff.modules.mouse$C1_down, neff.modules.mouse$C2_down)
+C_class <- list(C_up = C_up, C_down = C_down)
+
+hippo <- AddModuleScore(hippo, features = C_class, name = names(C_class))
+colnames(hippo@meta.data)[20:21] <- gsub("[0-9]+$", "", colnames(hippo@meta.data)[20:21])
+saveRDS(hippo@meta.data[20:21], 
+        file = "/projects/mludwig/hippo_GLP1/data/2021_Neff/hippo_module_scores_Neff_classes.rds")
+
+
+hippo <- AddModuleScore(hippo, features = neff.modules.mouse, name = names(neff.modules.mouse))
+colnames(hippo@meta.data)[22:31] <- gsub("[0-9]+$", "", colnames(hippo@meta.data)[22:31])
+saveRDS(hippo@meta.data[22:31],
+        file = "/projects/mludwig/hippo_GLP1/data/2021_Neff/hippo_module_scores_Neff_subtypes.rds")
+
+
+# DVC <- AddModuleScore(DVC, features = C_class, name = names(C_class))
+# colnames(DVC@meta.data)[15:16] <- gsub("[0-9]+$", "", colnames(DVC@meta.data)[15:16])
+# saveRDS(DVC@meta.data[15:16],
+#         file = "/projects/mludwig/hippo_GLP1/data/2021_Neff/DVC_module_scores_Neff_classes.rds")
+# 
+# 
+# DVC <- AddModuleScore(DVC, features = neff.modules.mouse, name = names(neff.modules.mouse))
+# colnames(DVC@meta.data)[17:26] <- gsub("[0-9]+$", "", colnames(DVC@meta.data)[17:26])
+# saveRDS(DVC@meta.data[17:26],
+#         file = "/projects/mludwig/hippo_GLP1/data/2021_Neff/DVC_module_scores_Neff_subtypes.rds")
+
+```
+
+

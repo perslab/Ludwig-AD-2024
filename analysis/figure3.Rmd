@@ -1,0 +1,470 @@
+---
+title: "figure3"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(dplyr)
+library(tidyverse)
+library(reshape2)
+library(gprofiler2)
+library(openxlsx)
+library(cowplot)
+```
+
+# Figure 3a
+```{r}
+# Differentially activated regulons across hippocampal glial cells
+lmer.list <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/lmer_hippo_glia_regulons.rds")
+
+regulon.data <- data.frame(matrix(NA, nrow = length(lmer.list), ncol = 5))
+colnames(regulon.data) <- c("cell.type", "veh.LPS", "sema.LPS", "intersection1", "intersection2")
+
+for (i in 1:length(lmer.list)) {
+  lmer <- lmer.list[[i]] 
+  regulon.data$cell.type[i] <- names(lmer.list)[i]
+  regulon.data$veh.LPS[i] <- length(which(lmer$p.adj.veh.LP < 0.05))
+  regulon.data$sema.LPS[i] <- length(which(lmer$p.adj.sema.LPS < 0.05))
+  regulon.data$intersection2[i] <- length(which(lmer$p.adj.veh.LPS < 0.05 & lmer$p.adj.sema.LPS < 0.05 & 
+                                                 sign(lmer$beta.veh.LPS) != sign(lmer$beta.sema.LPS)))
+  regulon.data$intersection1[i] <- length(which(lmer$p.adj.veh.LPS < 0.05 & lmer$p.adj.sema.LPS < 0.05))
+}      
+
+regulon.data <- melt(regulon.data, id.vars = "cell.type")
+
+# Plot
+regulon.plot <- ggplot(regulon.data, aes(x = cell.type, y = value, fill = variable)) +
+  geom_bar(position = position_dodge(), stat= "identity", colour="black", width=0.8, size = 0.3) +
+  theme_pubr(legend = "top") +
+  theme(axis.text.y = element_text(size=6, face="bold"),
+        axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm"),
+        legend.spacing.x = unit(0.1, "cm"),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3)) +
+  xlab(NULL) + ylab("Differentially activated regulons") +
+  scale_fill_manual(labels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS", "Overlap", "Reversal of LPS"), 
+                    values = c("#96C2D0", "#FC6A03", "grey60", "#4F328A")) +
+  scale_y_continuous(breaks = seq(0, 200, 20), limits = c(0, max(na.omit(regulon.data$value), 20))) 
+
+regulon.plot
+```
+# Figure 3b
+```{r}
+# Differentially activated regulons in microgloa
+# Identify microglia regulons that are diferentially activated by both LPS and semaglutide treatment
+lmer.microglia <- lmer.list[["Microglia"]]
+idx <- which(lmer.microglia$p.adj.veh.LPS < 0.05 & lmer.microglia$p.adj.sema.LPS < 0.05)
+
+lmer.microglia.veh <- lmer.microglia[idx, c("regulon", "beta.veh.LPS", "SE.veh.LPS")]
+lmer.microglia.veh$comparison <- "Veh-LPS vs. veh-PBS"
+
+lmer.microglia.LPS <- lmer.microglia[idx, c("regulon", "beta.sema.LPS", "SE.sema.LPS")]
+lmer.microglia.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+
+lmer.microglia.veh$delta <- lmer.microglia.LPS$delta <- lmer.microglia.veh$beta - lmer.microglia.LPS$beta
+
+colnames(lmer.microglia.veh) <- colnames(lmer.microglia.LPS) <- c("regulon", "beta", "SE", "comparison", "delta")
+lmer.microglia <- rbind(lmer.microglia.veh, lmer.microglia.LPS)
+
+lmer.microglia$comparison <- factor(lmer.microglia$comparison, 
+                                    levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+
+lmer.microglia$regulon <- factor(lmer.microglia$regulon, levels = lmer.microglia.veh$regulon[order(lmer.microglia.veh$delta, decreasing = T)])
+
+# Plot
+regulon.microglia.plot <- ggplot(lmer.microglia, aes(x = regulon, y = beta, color = comparison)) +
+  geom_point(stat = "identity", size = 1, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
+  theme_pubr() +
+  theme(axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0.5), "cm"), 
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  ylab("\u03b2") + xlab("") +
+  scale_color_manual(values = c("#96C2D0", "#FC6A03")) +
+  geom_hline(yintercept=0, linetype="dashed", 
+                color = "black", size=0.1)
+
+regulon.microglia.plot
+```
+
+
+# Combine all plots
+```{r}
+plot1 <- plot_grid(regulon.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")),
+                   regulon.microglia.plot + theme(plot.margin = unit(c(0, 0.0, 0, 0.1), "cm")),
+                   ncol = 2, align = "h",
+                   rel_widths = c(1, 1))
+
+# Margin: top, right, bottom, and left
+# fig3 <- plot_grid(regulons.pericytes1.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
+#                    regulons.endothelial.cells.plot + theme(plot.margin = unit(c(0, 0.05, 0, 0.05), "cm")), 
+#                    regulons.astrocytes.plot + theme(plot.margin = unit(c(0.0, 0, 0, 0.1), "cm")), 
+#                    ncol = 3, align = "h",
+#                    rel_widths = c(1, 1.8, 0.8)) 
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure3.png", fig3, height = 60, width = 183,
+       units = "mm")
+
+```
+
+
+# GO terms for microglia regulons 
+```{r}
+# Compute GO terms for microglia
+regulon.mat.microglia <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_microglia.rds")
+regulons <- levels(lmer.microglia$regulon)
+
+# Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+GO.microglia <- foreach(i = 1:length(regulons)) %dopar% {
+  
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.microglia)[which(regulon.mat.microglia[regulon,] != 0)]
+  
+  # Identify top 100 GO terms
+  GO.terms <- gost(query = query,
+                 organism = "mmusculus",
+                 ordered_query = F, correction_method = "fdr",
+                 exclude_iea = T, 
+                 sources = c("GO:BP", "GO:MF", "GO:CC", "KEGG", "REAC"),
+                 evcodes = T, significant = T)
+  
+  if (is.null(GO.terms)) {
+    data.frame()
+  } 
+  else { 
+    
+    GO.terms <- GO.terms[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
+    filter(term_size <= 500) %>% filter(intersection_size >= 3) %>% 
+    arrange(p_value) %>%top_n(100, -p_value)
+  
+    GO.terms <- GO.terms[, c(1, 3, 2, 4, 5)]
+    colnames(GO.terms) <- c("Term", "FDR", "Term_size", "Intersection_size", "Intersection")
+    GO.terms
+    }
+  
+}
+names(GO.microglia) <- regulons
+
+# Remove regulons where no significant GO terms were identified
+GO.microglia <- GO.microglia[unlist(lapply(GO.microglia, FUN = function(x) nrow(x) != 0))]
+
+# Save
+write.xlsx(GO.microglia, file = "/projects/mludwig/hippo_GLP1/output/SCENIC/GO_terms_hippo_microglia_regulons.xlsx",
+         rowNames = F)
+```
+
+# GO terms for pericytes1 regulons 
+```{r}
+# Compute GO terms for pericytes1
+regulon.mat.pericytes1 <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_pericytes1.rds")
+regulons <- levels(lmer.pericytes1$regulon)
+
+# Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+GO.pericytes1 <- foreach(i = 1:length(regulons)) %dopar% {
+  
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.pericytes1)[which(regulon.mat.pericytes1[regulon,] != 0)]
+  
+  # Identify top 100 GO terms
+  GO.terms <- gost(query = query,
+                 organism = "mmusculus",
+                 ordered_query = F, correction_method = "fdr",
+                 exclude_iea = T, 
+                 sources = c("GO:BP", "GO:MF", "GO:CC", "KEGG", "REAC"),
+                 evcodes = T, significant = T)
+  
+  if (is.null(GO.terms)) {
+    data.frame()
+  } 
+  else { 
+    
+    GO.terms <- GO.terms[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
+    filter(term_size <= 500) %>% filter(intersection_size >= 3) %>% 
+    arrange(p_value) %>%top_n(100, -p_value)
+  
+    GO.terms <- GO.terms[, c(1, 3, 2, 4, 5)]
+    colnames(GO.terms) <- c("Term", "FDR", "Term_size", "Intersection_size", "Intersection")
+    GO.terms
+    }
+  
+}
+names(GO.pericytes1) <- regulons
+
+# Remove regulons where no significant GO terms were identified
+GO.pericytes1 <- GO.pericytes1[unlist(lapply(GO.pericytes1, FUN = function(x) nrow(x) != 0))]
+
+# Save
+write.xlsx(GO.pericytes1, file = "/projects/mludwig/hippo_GLP1/output/SCENIC/GO_terms_hippo_pericytes1_regulons.xlsx",
+         rowNames = F)
+```
+
+# GO terms for endothelial cells regulons 
+```{r}
+# Compute GO terms for endothelial cells
+regulon.mat.endothelial.cells <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_endothelial_cells.rds")
+regulons <- levels(lmer.endothelial.cells$regulon)
+
+# Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+GO.endothelial.cells <- foreach(i = 1:length(regulons)) %dopar% {
+  
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.endothelial.cells)[which(regulon.mat.endothelial.cells[regulon,] != 0)]
+  
+  # Identify top 100 GO terms
+  GO.terms <- gost(query = query,
+                 organism = "mmusculus",
+                 ordered_query = F, correction_method = "fdr",
+                 exclude_iea = T, 
+                 sources = c("GO:BP", "GO:MF", "GO:CC", "KEGG", "REAC"),
+                 evcodes = T, significant = T)
+  
+  if (is.null(GO.terms)) {
+    data.frame()
+  } 
+  else { 
+    
+    GO.terms <- GO.terms[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
+    filter(term_size <= 500) %>% filter(intersection_size >= 3) %>% 
+    arrange(p_value) %>%top_n(100, -p_value)
+  
+    GO.terms <- GO.terms[, c(1, 3, 2, 4, 5)]
+    colnames(GO.terms) <- c("Term", "FDR", "Term_size", "Intersection_size", "Intersection")
+    GO.terms
+    }
+  
+}
+names(GO.endothelial.cells) <- regulons
+
+# Remove regulons where no significant GO terms were identified
+GO.endothelial.cells <- GO.endothelial.cells[unlist(lapply(GO.endothelial.cells, FUN = function(x) nrow(x) != 0))]
+
+# Save
+write.xlsx(GO.endothelial.cells, file = "/projects/mludwig/hippo_GLP1/output/SCENIC/GO_terms_hippo_endothelial_cells_regulons.xlsx",
+         rowNames = F)
+```
+
+# GO terms for astrocytes regulons 
+```{r}
+# Compute GO terms for astrocytes
+regulon.mat.astrocytes <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_astrocytes.rds")
+regulons <- levels(lmer.astrocytes$regulon)
+
+# Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+GO.astrocytes <- foreach(i = 1:length(regulons)) %dopar% {
+  
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.astrocytes)[which(regulon.mat.astrocytes[regulon,] != 0)]
+  
+  # Identify top 100 GO terms
+  GO.terms <- gost(query = query,
+                 organism = "mmusculus",
+                 ordered_query = F, correction_method = "fdr",
+                 exclude_iea = T, 
+                 sources = c("GO:BP", "GO:MF", "GO:CC", "KEGG", "REAC"),
+                 evcodes = T, significant = T)
+  
+  if (is.null(GO.terms)) {
+    data.frame()
+  } 
+  else { 
+    
+    GO.terms <- GO.terms[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
+    filter(term_size <= 500) %>% filter(intersection_size >= 3) %>% 
+    arrange(p_value) %>%top_n(100, -p_value)
+  
+    GO.terms <- GO.terms[, c(1, 3, 2, 4, 5)]
+    colnames(GO.terms) <- c("Term", "FDR", "Term_size", "Intersection_size", "Intersection")
+    GO.terms
+    }
+  
+}
+names(GO.astrocytes) <- regulons
+
+# Remove regulons where no significant GO terms were identified
+GO.astrocytes <- GO.astrocytes[unlist(lapply(GO.astrocytes, FUN = function(x) nrow(x) != 0))]
+
+# Save
+write.xlsx(GO.astrocytes, file = "/projects/mludwig/hippo_GLP1/output/SCENIC/GO_terms_hippo_astrocytes_regulons.xlsx",
+         rowNames = F)
+```
+
+# Microglia regulon genes 
+```{r}
+# Identify microglia regulons that are diferentially activated by eeither LPS and semaglutide treatment
+lmer.microglia <- lmer.list[["Microglia"]]
+idx <- which(lmer.microglia$p.adj.veh.LPS < 0.05 | lmer.microglia$p.adj.sema.LPS < 0.05)
+
+lmer.microglia <- lmer.microglia[idx, c("regulon", "beta.veh.LPS", "p.adj.veh.LPS", "beta.sema.LPS", "p.adj.sema.LPS")]
+colnames(lmer.microglia) <- c("Regulon", "Beta_veh-LPS_vs_veh-PBS", "P_adj_veh-LPS_vs_veh-PBS", 
+                               "Beta_sema-LPS_vs_veh-LPS", "P_adj_sema-LPS_vs_veh-LPS")
+lmer.microglia$Overlap <- "No"
+lmer.microglia$Overlap[which(lmer.microglia$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.microglia$`P_adj_sema-LPS_vs_veh-LPS` < 0.05)] <- "Yes"
+lmer.microglia$Reversal_by_LPS <- "No"
+lmer.microglia$Reversal_by_LPS[which(lmer.microglia$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.microglia$`P_adj_sema-LPS_vs_veh-LPS` < 0.05 &
+                                       sign(lmer.microglia$`Beta_veh-LPS_vs_veh-PBS`) != sign(lmer.microglia$`Beta_sema-LPS_vs_veh-LPS`))] <- "Yes"
+
+
+regulon.mat.microglia <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_microglia.rds")
+regulons <- lmer.microglia$Regulon
+
+regulon.list.microglia <- vector(length = length(regulons), mode = "list")
+names(regulon.list.microglia) <- regulons
+
+for (i in 1:length(regulons)) {
+
+  # Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.microglia)[which(regulon.mat.microglia[regulon,] != 0)]
+  regulon.list.microglia[[i]] <- query
+  
+}
+regulon.list.microglia <- c(Overview = list(lmer.microglia), regulon.list.microglia)
+
+# Save
+write.xlsx(regulon.list.microglia, 
+           file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulon_genes/genes_hippo_microglia_regulons.xlsx",
+         rowNames = F)
+```
+
+# Pericytes1 regulon genes
+```{r}
+# Identify pericytes1 regulons that are diferentially activated by eeither LPS and semaglutide treatment
+lmer.pericytes1 <- lmer.list[["Pericytes1"]]
+idx <- which(lmer.pericytes1$p.adj.veh.LPS < 0.05 | lmer.pericytes1$p.adj.sema.LPS < 0.05)
+
+lmer.pericytes1 <- lmer.pericytes1[idx, c("regulon", "beta.veh.LPS", "p.adj.veh.LPS", "beta.sema.LPS", "p.adj.sema.LPS")]
+colnames(lmer.pericytes1) <- c("Regulon", "Beta_veh-LPS_vs_veh-PBS", "P_adj_veh-LPS_vs_veh-PBS", 
+                               "Beta_sema-LPS_vs_veh-LPS", "P_adj_sema-LPS_vs_veh-LPS")
+lmer.pericytes1$Overlap <- "No"
+lmer.pericytes1$Overlap[which(lmer.pericytes1$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.pericytes1$`P_adj_sema-LPS_vs_veh-LPS` < 0.05)] <- "Yes"
+lmer.pericytes1$Reversal_by_LPS <- "No"
+lmer.pericytes1$Reversal_by_LPS[which(lmer.pericytes1$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.pericytes1$`P_adj_sema-LPS_vs_veh-LPS` < 0.05 &
+                                       sign(lmer.pericytes1$`Beta_veh-LPS_vs_veh-PBS`) != sign(lmer.pericytes1$`Beta_sema-LPS_vs_veh-LPS`))] <- "Yes"
+
+
+regulon.mat.pericytes1 <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_pericytes1.rds")
+regulons <- lmer.pericytes1$Regulon
+
+regulon.list.pericytes1 <- vector(length = length(regulons), mode = "list")
+names(regulon.list.pericytes1) <- regulons
+
+for (i in 1:length(regulons)) {
+
+  # Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.pericytes1)[which(regulon.mat.pericytes1[regulon,] != 0)]
+  regulon.list.pericytes1[[i]] <- query
+  
+}
+regulon.list.pericytes1 <- c(Overview = list(lmer.pericytes1), regulon.list.pericytes1)
+
+# Save
+write.xlsx(regulon.list.pericytes1, 
+           file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulon_genes/genes_hippo_pericytes1_regulons.xlsx",
+         rowNames = F)
+```
+
+# Endothelial cells regulons genes
+```{r}
+# Identify endothelial cell regulons that are diferentially activated by eeither LPS and semaglutide treatment
+lmer.endothelial.cells <- lmer.list[["Endothelial_cells"]]
+idx <- which(lmer.endothelial.cells$p.adj.veh.LPS < 0.05 | lmer.endothelial.cells$p.adj.sema.LPS < 0.05)
+
+lmer.endothelial.cells <- lmer.endothelial.cells[idx, c("regulon", "beta.veh.LPS", "p.adj.veh.LPS", "beta.sema.LPS", "p.adj.sema.LPS")]
+colnames(lmer.endothelial.cells) <- c("Regulon", "Beta_veh-LPS_vs_veh-PBS", "P_adj_veh-LPS_vs_veh-PBS", 
+                               "Beta_sema-LPS_vs_veh-LPS", "P_adj_sema-LPS_vs_veh-LPS")
+lmer.endothelial.cells$Overlap <- "No"
+lmer.endothelial.cells$Overlap[which(lmer.endothelial.cells$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.endothelial.cells$`P_adj_sema-LPS_vs_veh-LPS` < 0.05)] <- "Yes"
+lmer.endothelial.cells$Reversal_by_LPS <- "No"
+lmer.endothelial.cells$Reversal_by_LPS[which(lmer.endothelial.cells$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.endothelial.cells$`P_adj_sema-LPS_vs_veh-LPS` < 0.05 &
+                                       sign(lmer.endothelial.cells$`Beta_veh-LPS_vs_veh-PBS`) != sign(lmer.endothelial.cells$`Beta_sema-LPS_vs_veh-LPS`))] <- "Yes"
+
+
+regulon.mat.endothelial.cells <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_endothelial_cells.rds")
+regulons <- lmer.endothelial.cells$Regulon
+
+regulon.list.endothelial.cells <- vector(length = length(regulons), mode = "list")
+names(regulon.list.endothelial.cells) <- regulons
+
+for (i in 1:length(regulons)) {
+
+  # Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.endothelial.cells)[which(regulon.mat.endothelial.cells[regulon,] != 0)]
+  regulon.list.endothelial.cells[[i]] <- query
+  
+}
+regulon.list.endothelial.cells <- c(Overview = list(lmer.endothelial.cells), regulon.list.endothelial.cells)
+
+# Save
+write.xlsx(regulon.list.endothelial.cells, 
+           file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulon_genes/genes_hippo_endothelial_cells_regulons.xlsx",
+         rowNames = F)
+```
+
+# Astrocytes regulon genes
+```{r}
+# Identify astrocyte regulons that are diferentially activated by eeither LPS and semaglutide treatment
+lmer.astrocytes <- lmer.list[["Astrocytes"]]
+idx <- which(lmer.astrocytes$p.adj.veh.LPS < 0.05 | lmer.astrocytes$p.adj.sema.LPS < 0.05)
+
+lmer.astrocytes <- lmer.astrocytes[idx, c("regulon", "beta.veh.LPS", "p.adj.veh.LPS", "beta.sema.LPS", "p.adj.sema.LPS")]
+colnames(lmer.astrocytes) <- c("Regulon", "Beta_veh-LPS_vs_veh-PBS", "P_adj_veh-LPS_vs_veh-PBS", 
+                               "Beta_sema-LPS_vs_veh-LPS", "P_adj_sema-LPS_vs_veh-LPS")
+lmer.astrocytes$Overlap <- "No"
+lmer.astrocytes$Overlap[which(lmer.astrocytes$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.astrocytes$`P_adj_sema-LPS_vs_veh-LPS` < 0.05)] <- "Yes"
+lmer.astrocytes$Reversal_by_LPS <- "No"
+lmer.astrocytes$Reversal_by_LPS[which(lmer.astrocytes$`P_adj_veh-LPS_vs_veh-PBS` < 0.05 & lmer.astrocytes$`P_adj_sema-LPS_vs_veh-LPS` < 0.05 &
+                                       sign(lmer.astrocytes$`Beta_veh-LPS_vs_veh-PBS`) != sign(lmer.astrocytes$`Beta_sema-LPS_vs_veh-LPS`))] <- "Yes"
+
+
+regulon.mat.astrocytes <- readRDS("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_astrocytes.rds")
+regulons <- lmer.astrocytes$Regulon
+
+regulon.list.astrocytes <- vector(length = length(regulons), mode = "list")
+names(regulon.list.astrocytes) <- regulons
+
+for (i in 1:length(regulons)) {
+
+  # Loop through regulons that are differentially activated by both LPS and semaglutide treatment
+  regulon <- regulons[i]
+  query <- colnames(regulon.mat.astrocytes)[which(regulon.mat.astrocytes[regulon,] != 0)]
+  regulon.list.astrocytes[[i]] <- query
+  
+}
+regulon.list.astrocytes <- c(Overview = list(lmer.astrocytes), regulon.list.astrocytes)
+
+# Save
+write.xlsx(regulon.list.astrocytes, 
+           file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulon_genes/genes_hippo_astrocytes_regulons.xlsx",
+         rowNames = F)
+```
+

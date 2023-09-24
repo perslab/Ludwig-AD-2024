@@ -1,0 +1,460 @@
+---
+title: "SCENIC_analysis"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+# ```{r}
+# # Settings for the html file
+# knitr::opts_chunk$set(eval = FALSE)
+# # Adding the library with all the scenic dependencies
+# .libPaths( c( .libPaths(), "/projects/amj/genetics/my_tools/SCENIC/renv/library/R-4.0/x86_64-pc-linux-gnu") )
+# ```
+# 
+# ```{r}
+# # Required packages:
+# library(SCopeLoomR)
+# library(AUCell)
+# library(SCENIC)
+# library(Seurat)
+# library(data.table)
+# library(tidyverse)
+# library(patchwork)
+# library(jsonlite)
+# library(ggpubr)
+# library(wesanderson)
+# 
+# # For some of the plots:
+# library(KernSmooth)
+# library(RColorBrewer)
+# library(plotly)
+# library(BiocParallel)
+# library(grid)
+# library(ComplexHeatmap)
+# ```
+# 
+# # Save regulons and AUC matrices
+# ```{r}
+# # Astrocytes
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_astrocytes.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_astrocytes.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_astrocytes.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_astrocytes.rds")
+# ```
+# 
+# ```{r}
+# # Bcas1 oligodendrocytes
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_Bcas1_oligodendrocytes.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_Bcas1_oligodendrocytes.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_Bcas1_oligodendrocytes.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_Bcas1_oligodendrocytes.rds")
+# ```
+# 
+# ```{r}
+# # C1ql1 oligodendrocytes
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_C1ql1_oligodendrocytes.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_C1ql1_oligodendrocytes.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_C1ql1_oligodendrocytes.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_C1ql1_oligodendrocytes.rds")
+# ```
+# 
+# ```{r}
+# # Endothelial cells
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_endothelial_cells.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_endothelial_cells.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_endothelial_cells.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_endothelial_cells.rds")
+# ```
+# 
+# ```{r}
+# # Microglia
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_microglia.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_microglia.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_microglia.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_microglia.rds")
+# ```
+# 
+# ```{r}
+# # Mobp oligodendrocytes
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_Mobp_oligodendrocytes.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_Mobp_oligodendrocytes.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_Mobp_oligodendrocytes.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_Mobp_oligodendrocytes.rds")
+# ```
+# 
+# ```{r}
+# # Pericytes1
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_pericytes1.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_pericytes1.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_pericytes1.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_pericytes1.rds")
+# ```
+# 
+# ```{r}
+# # Pericytes2
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_pericytes2.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_pericytes2.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_pericytes2.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_pericytes2.rds")
+# ```
+# 
+# ```{r}
+# # Neutrophils
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_unknown_glia.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+# 
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_unknown_glia.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+# 
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_unknown_glia.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_unknown_glia.rds")
+# ```
+# 
+# ```{r}
+# # VLMCs
+# # Loading regulons
+# loom <- open_loom("/scratch/mlf210/SCENIC/hippo_GLP1/scenic_hippo_VLMCs.loom")
+# regulon.AUC <- get_regulons_AUC(loom, "RegulonsAUC")
+# expr.mat <- get_dgem(loom)
+# expr.mat.log <- log2(expr.mat+1) # Better if it is logged/normalized
+# regulon.mat <- get_regulons(loom, column.attr.name="Regulons")
+# regulons <- regulonsToGeneLists(regulon.mat)
+# close_loom(loom)
+#
+# # Loading regulon threshold
+# regs <- read_json("/scratch/mlf210/SCENIC/hippo_GLP1/regulon_thresholds_hippo_VLMCs.json",
+#                   simplify = T)
+# regulon.AUC.thresholds <- regs$defaultThresholdValue
+# names(regulon.AUC.thresholds) <- regs$regulon
+#
+# 
+# # Save AUC
+# saveRDS(regulon.AUC@assays@data@listData$AUC,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_VLMCs.rds")
+# 
+# # Save regulons mat
+# saveRDS(regulon.mat,
+#         file = "/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/regulon_mat_hippo_VLMCs.rds")
+# ```
+
+
+```{r}
+library(Seurat)
+library(lme4)
+library(emmeans)
+library(doMC)
+registerDoMC(20)
+```
+
+# Load Seurat object
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+```
+
+# Construct linear mixed effect models
+```{r}
+# Function to performer linear mixed effect regression
+perform.lmer <- function(seurat.obj) {
+  
+  regulons <- rownames(seurat.obj@assays$regulon)[which(apply(seurat.obj@assays$regulon@data, 1, function(x) {sum(x != 0)}) >= (ncol(seurat.obj)/10))]
+
+  ### Construct model for veh-LPS vs. veh-PBS ###
+  groups <- c("Veh-LPS", "Veh-PBS")
+  seurat.obj.veh <- subset(seurat.obj, drug %in% groups & time %in% c("2h", "24h"))
+
+  sample <- unique(seurat.obj.veh$hash.ID)
+  
+  data <- cbind.data.frame(treatment = as.factor(seurat.obj.veh$treatment), 
+                           sample = as.factor(seurat.obj.veh$hash.ID),
+                           pool = as.factor(seurat.obj.veh$pool),
+                           run = as.factor(seurat.obj.veh$run),
+                           time = as.factor(seurat.obj.veh$time),
+                           drug = factor(seurat.obj.veh$drug, levels = groups))
+
+  lmer.veh <- foreach(i = regulons) %dopar% {
+    
+      p.values <- data.frame(matrix(NA, nrow = 1, ncol = 3))
+      
+      colnames(p.values) <- c("beta.veh.LPS", "SE.veh.LPS", "p.veh.LPS")
+      
+      data$regulon <- seurat.obj.veh@assays$regulon@data[i, ]
+      
+      # Linear mixed effects model
+      model <- lmer(regulon ~ drug * time + (1|sample) + (1|pool),
+                data=data,
+                REML=TRUE)
+    
+      # Least-squares means
+      emm <- lsmeans(model, pairwise ~ drug, adjust = NULL)
+      emm <- summary(emm$contrasts)
+      
+      # P values
+      p.values$beta.veh.LPS <- emm$estimate[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+      p.values$SE.veh.LPS <- emm$SE[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+      p.values$p.veh.LPS <- emm$p.value[which(emm$contrast == "(Veh-LPS) - (Veh-PBS)")]
+
+      p.values
+      
+    }
+    
+    names(lmer.veh) <- regulons
+    lmer.veh <- dplyr::bind_rows(lmer.veh, .id = c("regulon"))
+    lmer.veh$p.adj.veh.LPS <- p.adjust(lmer.veh$p.veh.LPS, method = "fdr")
+    
+    ### Construct model for sema-LPS vs. veh-LPS ###
+    groups <- c("Sema-LPS", "Veh-LPS")
+    seurat.obj.LPS <- subset(seurat.obj, drug %in% groups)
+  
+    sample <- unique(seurat.obj.LPS$hash.ID)
+    
+    data <- cbind.data.frame(treatment = as.factor(seurat.obj.LPS$treatment), 
+                             sample = as.factor(seurat.obj.LPS$hash.ID),
+                             pool = as.factor(seurat.obj.LPS$pool),
+                             run = as.factor(seurat.obj.LPS$run),
+                             time = as.factor(seurat.obj.LPS$time),
+                             drug = factor(seurat.obj.LPS$drug, levels = groups))
+  
+    lmer.LPS <- foreach(i = regulons) %dopar% {
+      
+        p.values <- data.frame(matrix(NA, nrow = 1, ncol = 3))
+        
+        colnames(p.values) <- c("beta.sema.LPS", "SE.sema.LPS", "p.sema.LPS")
+        
+        data$regulon <- seurat.obj.LPS@assays$regulon@data[i, ]
+        
+        # Linear mixed effects model
+        model <- lmer(regulon ~ drug * time + (1|sample) + (1|pool),
+                  data=data,
+                  REML=TRUE)
+      
+        # Least-squares means
+        emm <- lsmeans(model, pairwise ~ drug, adjust = NULL)
+        emm <- summary(emm$contrasts)
+        
+        # P values
+        p.values$beta.sema.LPS <- emm$estimate[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+        p.values$SE.sema.LPS <- emm$SE[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+        p.values$p.sema.LPS <- emm$p.value[which(emm$contrast == "(Sema-LPS) - (Veh-LPS)")]
+        
+        p.values
+        
+      }
+      
+      names(lmer.LPS) <- regulons
+      lmer.LPS <- dplyr::bind_rows(lmer.LPS, .id = c("regulon"))
+      lmer.LPS$p.adj.sema.LPS <- p.adjust(lmer.LPS$p.sema.LPS, method = "fdr")
+      
+      ### Merge ###
+      lmer <- merge(lmer.veh, lmer.LPS, by = "regulon")
+      
+      return(lmer)
+  
+}
+```
+
+
+```{r}
+# Compute
+cell.types <- levels(hippo.glia$cell.type2)
+names <- paste(tolower(substr(cell.types, 1, 1)), substr(cell.types, 2, nchar(cell.types)), sep="")
+names <- gsub("neutrophils", "unknown_glia", names)
+names <- gsub("bcas1", "Bcas1", names)
+names <- gsub("c1ql1", "C1ql1", names)
+names <- gsub("mobp", "Mobp", names)
+names <- gsub("vLMCs", "VLMCs", names)
+
+
+lmer.list <- vector(length = length(cell.types), mode = "list")
+names(lmer.list) <- cell.types
+
+for (i in 1:length(lmer.list)) {
+  
+  print(cell.types[i])
+  
+  hippo.sub <- subset(hippo.glia, cell.type2 == cell.types[i])
+  hippo.AUC <- readRDS(paste0("/projects/mludwig/hippo_GLP1/output/SCENIC/regulons/AUC_hippo_", names[i], ".rds"))
+  
+  print(nrow(hippo.AUC))
+  
+  hippo.sub[["regulon"]] <- CreateAssayObject(data = hippo.AUC)
+  lmer <- perform.lmer(hippo.sub)
+  lmer.list[[i]] <- lmer
+  
+  print("#-----#")
+  
+}
+
+saveRDS(lmer.list, file = "/projects/mludwig/hippo_GLP1/output/SCENIC/lmer_hippo_glia_regulons.rds")
+```
+

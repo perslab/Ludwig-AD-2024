@@ -1,0 +1,200 @@
+---
+title: "clustering_DVC_neurons"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+# Load data
+```{r}
+DVC <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj.rds")
+```
+
+# Subset neurons
+```{r}
+DVC.neurons <- subset(DVC, SCT_snn_res.0.1 %in% c(0, 6, 8, 9, 10, 11, 12, 13, 16))
+```
+
+# Normalize data
+```{r}
+DVC.neurons <- SCTransform(DVC.neurons, verbose = F, method = "qpoisson")
+```
+
+# Run PCA
+```{r}
+# PCA
+VariableFeatures(DVC.neurons[["SCT"]]) <- rownames(DVC.neurons[["SCT"]]@scale.data)
+DVC.neurons <- RunPCA(DVC.neurons, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC.neurons, ndims = 100)
+```
+
+# Run UMAP
+```{r}
+# UMAP
+DVC.neurons <- RunUMAP(DVC.neurons, dims = 1:30, n.neighbors = 50)
+```
+
+# Find clusters
+```{r}
+DVC.neurons <- FindNeighbors(DVC.neurons, dims = 1:30, k.param = 50, verbose = F)
+DVC.neurons <- FindClusters(DVC.neurons, resolution = 0.1, verbose = F)
+DVC.neurons <- FindClusters(DVC.neurons, resolution = 1, verbose = F)
+```
+
+# Remove bad quality cells
+```{r}
+source("/projects/mludwig/hippo_GLP1/code/flag_clusters.R")
+
+# Remove clusters
+flagged.clusters1 <- flag.clusters(seurat.obj = DVC.neurons,
+                                   genes = c("percent.mt", "Mobp"),
+                                   resolution = "SCT_snn_res.1", quantile = 0.95)
+
+flagged.clusters2 <- flag.clusters2(seurat.obj = DVC.neurons,
+                                    resolution = "SCT_snn_res.1", fraction = 0.75)
+
+flagged.clusters <- unique(c(flagged.clusters1, flagged.clusters2))
+```
+
+```{r}
+# Remove cluster 6 and 8 (high percent.mt and Mobp), and 57 (high percent.mt)
+DVC.neurons <- subset(DVC.neurons, SCT_snn_res.1 %in% flagged.clusters, invert = T)
+```
+
+# Rerun PCA
+```{r}
+# PCA
+VariableFeatures(DVC.neurons[["SCT"]]) <- rownames(DVC.neurons[["SCT"]]@scale.data)
+DVC.neurons <- RunPCA(DVC.neurons, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC.neurons, ndims = 100)
+```
+
+# Rerun UMAP
+```{r}
+# UMAP
+DVC.neurons <- RunUMAP(DVC.neurons, dims = 1:30, n.neighbors = 50)
+
+DimPlot(DVC.neurons, group.by = "run", shuffle = T)
+```
+
+# Rerun clustering
+```{r}
+DVC.neurons <- FindNeighbors(DVC.neurons, dims = 1:30, k.param = 50, verbose = F)
+DVC.neurons <- FindClusters(DVC.neurons, resolution = 0.1, verbose = F)
+DVC.neurons <- FindClusters(DVC.neurons, resolution = 1, verbose = F)
+DVC.neurons <- FindClusters(DVC.neurons, resolution = 2, verbose = F)
+
+```
+
+# Transfer labels
+```{r}
+ludwig <- readRDS("/projects/mludwig/DVC/output/Seurat_objs/integrated/new_neurons_Seurat_obj_labels.rds")
+
+anchors <- FindTransferAnchors(reference = ludwig, query = DVC.neurons, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = ludwig$major.cell.type, 
+    dims = 1:30)
+
+DVC.neurons$ludwig.major.cell.type.predictions <- predictions$predicted.id
+DVC.neurons$ludwig.major.cell.type.score <- predictions$prediction.score.max
+
+
+predictions <- TransferData(anchorset = anchors, refdata = ludwig$cell.type,
+                            dims = 1:30)
+
+DVC.neurons$ludwig.cell.type.predictions <- predictions$predicted.id
+DVC.neurons$ludwig.cell.type.score <- predictions$prediction.score.max
+
+```
+
+```{r}
+DVC.neurons@meta.data <- DVC.neurons@meta.data[, c("nCount_RNA", "nFeature_RNA",
+                                                   "nCount_SCT", "nFeature_SCT",
+                                                   "percent.mt", "pool", "hash.ID",
+                                                   "treatment", "drug",
+                                                   "time", "run",
+                                                   "SCT_snn_res.0.1", "SCT_snn_res.1",
+                                                   "ludwig.major.cell.type.predictions", 
+                                                   "ludwig.major.cell.type.score",
+                                                   "ludwig.cell.type.predictions",
+                                                   "ludwig.cell.type.score")]
+
+DVC.neurons$cell.type <- paste0("Neurons", DVC.neurons$SCT_snn_res.0.1)
+
+DVC.neurons$cell.type <- factor(DVC.neurons$cell.type,
+                                  levels =  paste0("Neurons", sort(unique(DVC.neurons$SCT_snn_res.0.1))))
+
+# Save
+# saveRDS(DVC.neurons,
+#         file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj.rds")
+```
+
+# Identify major neuronal populations
+```{r}
+cellex <- read.table(gzfile("/projects/mludwig/hippo_GLP1/output/cellex/output/DVC_neurons_mm.esmu.csv.gz"), 
+                     row.names = 1, sep = ",", header = T)
+
+Slc17a6.score <- cellex["Slc17a6", order(cellex["Slc17a6",], decreasing = T)]
+Slc32a1.score <- cellex["Slc32a1", order(cellex["Slc32a1",], decreasing = T)]
+Gad2.score <- cellex["Gad2", order(cellex["Gad2",], decreasing = T)]
+Chat.score <- cellex["Chat", order(cellex["Chat",], decreasing = T)]
+Dbh.score <- cellex["Dbh", order(cellex["Dbh",], decreasing = T)]
+Th.score <- cellex["Th", order(cellex["Th",], decreasing = T)]
+Tph2.score <- cellex["Tph2", order(cellex["Tph2",], decreasing = T)]
+
+
+Chat.neurons <- colnames(Chat.score)[which(Chat.score >= 0.9)]
+Chat.neurons <- gsub("X", "", Chat.neurons)
+
+Dbh.neurons <- intersect(colnames(Dbh.score)[which(Dbh.score >= 0.9)],
+                         colnames(Th.score)[which(Th.score >= 0.9)])
+Dbh.neurons <- gsub("X", "", Dbh.neurons)
+
+Th.neurons <- intersect(colnames(Th.score)[which(Th.score >= 0.9)],
+                        colnames(Dbh.score)[which(Dbh.score < 0.9)])
+Th.neurons <- gsub("X", "", Th.neurons)
+
+Tph2.neurons <- colnames(Tph2.score)[which(Tph2.score >= 0.9)]
+Tph2.neurons <- gsub("X", "", Tph2.neurons)
+
+Slc17a6.neurons <- colnames(Slc17a6.score)[which(Slc17a6.score > 0)]
+Slc17a6.neurons <- Slc17a6.neurons[!(Slc17a6.neurons %in% c(Dbh.neurons, Th.neurons))]
+Slc17a6.neurons <- gsub("X", "", Slc17a6.neurons)
+
+Gad2.neurons <- intersect(colnames(Gad2.score)[which(Gad2.score > 0)],
+                          colnames(Slc17a6.score)[which(Slc17a6.score == 0)])
+Slc32a1.neurons <- union(colnames(Slc32a1.score)[which(Slc32a1.score > 0)],
+                         Gad2.neurons)
+Slc32a1.neurons <- gsub("X", "", Slc32a1.neurons)
+```
+
+# Save with neuronal population labels
+```{r}
+DVC.neurons$cell.type <- ""
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Slc32a1.neurons)] <- "Slc32a1_inhibitory_neurons"
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Slc17a6.neurons)] <- "Slc17a6_excitatory_neurons"
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Tph2.neurons)] <- "Tph2_serotonergic_neurons"
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Dbh.neurons)] <- "Dbh_noradrenergic_neurons"
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Th.neurons)] <- "Th_dopaminergic_neurons"
+DVC.neurons$cell.type[which(DVC.neurons$SCT_snn_res.1 %in% Chat.neurons)] <- "Chat_cholinergic_neurons"
+
+DimPlot(DVC.neurons, group.by = "cell.type")
+
+# saveRDS(DVC.neurons,
+#         file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj_labels.rds")
+```

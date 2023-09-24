@@ -1,0 +1,238 @@
+---
+title: "cacoa_prop_diff"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(sccore)
+library(cacoa)
+library(Seurat)
+library(conos)
+```
+
+# Load Seurat object
+```{r}
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+DVC.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj_labels.rds")
+```
+
+
+# Perform cacao proportion analysis for hippocampal neutrophils
+# Veh-LPS vs. veh-PBS
+```{r}
+neutrophils.veh.loadings <- data.frame(matrix(NA, nrow = 2000, ncol = 2))
+
+colnames(neutrophils.veh.loadings) <- c("time", "loadings")
+neutrophils.veh.loadings$time <- rep(c("2h", "24h"), each = 1000) 
+neutrophils.veh.loadings$time <- factor(neutrophils.veh.loadings$time, levels = c("2h", "24h"))
+
+neutrophils.veh.p <- data.frame(matrix(NA, nrow = 2, ncol = 2))
+colnames(neutrophils.veh.p) <- c("time", "p.value")
+neutrophils.veh.p$time <- factor(c("2h", "24h"), 
+                                 levels = c("2h", "24h"))
+
+
+for (i in neutrophils.veh.p$time) {
+
+  hippo.veh <- subset(hippo.glia, drug %in% c("Veh-LPS", "Veh-PBS") & time == i)
+  
+  # Create sample groups vector
+  sample.groups <- factor(hippo.veh$drug)
+  names(sample.groups) <- hippo.veh$hash.ID
+  
+  # Create cell groups vector
+  cell.groups <- factor(hippo.veh$cell.type2)
+  names(cell.groups) <- colnames(hippo.veh)
+  
+  # create sample per cell vector
+  sample.per.cell <- hippo.veh$hash.ID
+  names(sample.per.cell) <- colnames(hippo.veh)
+  
+  cao <- Cacoa$new(hippo.veh, sample.groups = sample.groups, 
+                   cell.groups = cell.groups, sample.per.cell = sample.per.cell, 
+                   ref.level = "Veh-PBS", target.level = "Veh-LPS", graph.name = "SCT.nn")
+  
+  cao$estimateCellLoadings(n.cores = 20)
+  
+  cao.p <- data.frame(cao$test.results$coda$pval)
+  cao.loadings <- data.frame(cao$test.results$coda$loadings)
+  
+  neutrophils.veh.p$p.value[which(neutrophils.veh.p$time == i)] <- 
+    as.numeric(cao.p[rownames(cao.p) == "Neutrophils", ])
+  
+  neutrophils.veh.loadings$loadings[which(neutrophils.veh.loadings$time == i)] <- 
+  as.numeric(cao.loadings[rownames(cao.loadings) == "Neutrophils", ])
+  
+}
+```
+
+
+# Sema-LPS vs. veh-LPS
+```{r}
+neutrophils.LPS.loadings <- data.frame(matrix(NA, nrow = 4000, ncol = 2))
+colnames(neutrophils.LPS.loadings) <- c("time", "loadings")
+neutrophils.LPS.loadings$time <- rep(c("2h", "24h", "5d", "11d"), each = 1000) 
+neutrophils.LPS.loadings$time <- factor(neutrophils.LPS.loadings$time, 
+                                        levels = c("2h", "24h", "5d", "11d"))
+neutrophils.LPS.p <- data.frame(matrix(NA, nrow = 4, ncol = 2))
+colnames(neutrophils.LPS.p) <- c("time", "p.value")
+neutrophils.LPS.p$time <- factor(c("2h", "24h", "5d", "11d"), 
+                                 levels = c("2h", "24h", "5d", "11d"))
+
+
+for (i in neutrophils.LPS.p$time) {
+  
+  hippo.LPS <- subset(hippo.glia, drug %in% c("Sema-LPS", "Veh-LPS") & time == i)
+  
+  # Create sample groups vector
+  sample.groups <- factor(hippo.LPS$drug)
+  names(sample.groups) <- hippo.LPS$hash.ID
+  
+  # Create cell groups vector
+  cell.groups <- factor(hippo.LPS$cell.type2)
+  names(cell.groups) <- colnames(hippo.LPS)
+  
+  # create sample per cell vector
+  sample.per.cell <- hippo.LPS$hash.ID
+  names(sample.per.cell) <- colnames(hippo.LPS)
+  
+  cao <- Cacoa$new(hippo.LPS, sample.groups = sample.groups, 
+                   cell.groups = cell.groups, sample.per.cell = sample.per.cell, 
+                   ref.level = "Veh-LPS", target.level = "Sema-LPS", graph.name = "SCT.nn")
+  
+  cao$estimateCellLoadings(n.cores = 20)
+  
+  cao.p <- data.frame(cao$test.results$coda$pval)
+  cao.loadings <- data.frame(cao$test.results$coda$loadings)
+  
+  neutrophils.LPS.p$p.value[which(neutrophils.LPS.p$time == i)] <- 
+    as.numeric(cao.p[rownames(cao.p) == "Neutrophils", ])
+  
+  neutrophils.LPS.loadings$loadings[which(neutrophils.LPS.loadings$time == i)] <- 
+    as.numeric(cao.loadings[rownames(cao.loadings) == "Neutrophils", ])
+  
+}
+```
+
+# Save
+```{r}
+neutrophils.prop.list <- list(veh.loadings = neutrophils.veh.loadings, 
+                              veh.p = neutrophils.veh.p,
+                              LPS.loadings = neutrophils.LPS.loadings, 
+                              LPS.p = neutrophils.LPS.p)
+saveRDS(neutrophils.prop.list,
+        file = "/projects/mludwig/hippo_GLP1/output/cacoa/hippo_neutrophils_prop_list.rds")
+```
+
+
+# Perform cacao proportion analysis for DVC neutrophils
+# Veh-LPS vs. veh-PBS
+```{r}
+neutrophils.veh.loadings <- data.frame(matrix(NA, nrow = 2000, ncol = 2))
+
+colnames(neutrophils.veh.loadings) <- c("time", "loadings")
+neutrophils.veh.loadings$time <- rep(c("2h", "24h"), each = 1000) 
+neutrophils.veh.loadings$time <- factor(neutrophils.veh.loadings$time, levels = c("2h", "24h"))
+
+neutrophils.veh.p <- data.frame(matrix(NA, nrow = 2, ncol = 2))
+colnames(neutrophils.veh.p) <- c("time", "p.value")
+neutrophils.veh.p$time <- factor(c("2h", "24h"), 
+                                 levels = c("2h", "24h"))
+
+
+for (i in neutrophils.veh.p$time) {
+
+  DVC.veh <- subset(DVC.glia, drug %in% c("Veh-LPS", "Veh-PBS") & time == i)
+  
+  # Create sample groups vector
+  sample.groups <- factor(DVC.veh$drug)
+  names(sample.groups) <- DVC.veh$hash.ID
+  
+  # Create cell groups vector
+  cell.groups <- factor(DVC.veh$cell.type)
+  names(cell.groups) <- colnames(DVC.veh)
+  
+  # create sample per cell vector
+  sample.per.cell <- DVC.veh$hash.ID
+  names(sample.per.cell) <- colnames(DVC.veh)
+  
+  cao <- Cacoa$new(DVC.veh, sample.groups = sample.groups, 
+                   cell.groups = cell.groups, sample.per.cell = sample.per.cell, 
+                   ref.level = "Veh-PBS", target.level = "Veh-LPS", graph.name = "SCT.nn")
+  
+  cao$estimateCellLoadings(n.cores = 20)
+  
+  cao.p <- data.frame(cao$test.results$coda$pval)
+  cao.loadings <- data.frame(cao$test.results$coda$loadings)
+  
+  neutrophils.veh.p$p.value[which(neutrophils.veh.p$time == i)] <- 
+    as.numeric(cao.p[rownames(cao.p) == "Neutrophils", ])
+  
+  neutrophils.veh.loadings$loadings[which(neutrophils.veh.loadings$time == i)] <- 
+  as.numeric(cao.loadings[rownames(cao.loadings) == "Neutrophils", ])
+  
+}
+```
+
+
+# Sema-LPS vs. veh-LPS
+```{r}
+neutrophils.LPS.loadings <- data.frame(matrix(NA, nrow = 4000, ncol = 2))
+colnames(neutrophils.LPS.loadings) <- c("time", "loadings")
+neutrophils.LPS.loadings$time <- rep(c("2h", "24h", "5d", "11d"), each = 1000) 
+neutrophils.LPS.loadings$time <- factor(neutrophils.LPS.loadings$time, 
+                                        levels = c("2h", "24h", "5d", "11d"))
+neutrophils.LPS.p <- data.frame(matrix(NA, nrow = 4, ncol = 2))
+colnames(neutrophils.LPS.p) <- c("time", "p.value")
+neutrophils.LPS.p$time <- factor(c("2h", "24h", "5d", "11d"), 
+                                 levels = c("2h", "24h", "5d", "11d"))
+
+
+for (i in neutrophils.LPS.p$time) {
+  
+  DVC.LPS <- subset(DVC.glia, drug %in% c("Sema-LPS", "Veh-LPS") & time == i)
+  
+  # Create sample groups vector
+  sample.groups <- factor(DVC.LPS$drug)
+  names(sample.groups) <- DVC.LPS$hash.ID
+  
+  # Create cell groups vector
+  cell.groups <- factor(DVC.LPS$cell.type)
+  names(cell.groups) <- colnames(DVC.LPS)
+  
+  # create sample per cell vector
+  sample.per.cell <- DVC.LPS$hash.ID
+  names(sample.per.cell) <- colnames(DVC.LPS)
+  
+  cao <- Cacoa$new(DVC.LPS, sample.groups = sample.groups, 
+                   cell.groups = cell.groups, sample.per.cell = sample.per.cell, 
+                   ref.level = "Veh-LPS", target.level = "Sema-LPS", graph.name = "SCT.nn")
+  
+  cao$estimateCellLoadings(n.cores = 20)
+  
+  cao.p <- data.frame(cao$test.results$coda$pval)
+  cao.loadings <- data.frame(cao$test.results$coda$loadings)
+  
+  neutrophils.LPS.p$p.value[which(neutrophils.LPS.p$time == i)] <- 
+    as.numeric(cao.p[rownames(cao.p) == "Neutrophils", ])
+  
+  neutrophils.LPS.loadings$loadings[which(neutrophils.LPS.loadings$time == i)] <- 
+    as.numeric(cao.loadings[rownames(cao.loadings) == "Neutrophils", ])
+  
+}
+```
+
+# Save
+```{r}
+neutrophils.prop.list <- list(veh.loadings = neutrophils.veh.loadings, 
+                              veh.p = neutrophils.veh.p,
+                              LPS.loadings = neutrophils.LPS.loadings, 
+                              LPS.p = neutrophils.LPS.p)
+saveRDS(neutrophils.prop.list,
+        file = "/projects/mludwig/hippo_GLP1/output/cacoa/DVC_neutrophils_prop_list.rds")
+```
+

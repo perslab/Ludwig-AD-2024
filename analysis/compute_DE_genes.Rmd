@@ -1,0 +1,127 @@
+---
+title: "compute_DE_genes"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(doMC)
+registerDoMC(20)
+library(DESeq2)
+```
+
+# Load Seurat objects
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
+DVC <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj_labels.rds")
+```
+
+```{r}
+compute.DE.genes <- function(seurat.obj, group.1, group.2, time.points, cell.type) {
+  
+  groups <- c(group.2, group.1)
+
+  cell.types <- unique(seurat.obj@meta.data[,cell.type])
+  
+  DEGs <- foreach(i = cell.types) %dopar% {
+    
+    idx <- which(seurat.obj@meta.data[, cell.type] == i & seurat.obj$drug %in% groups & 
+                   seurat.obj$time %in% time.points)
+  
+    seurat.obj.sub <- subset(seurat.obj, cells = idx)
+      
+    samples.keep <- names(table(seurat.obj.sub$hash.ID))[which(table(seurat.obj.sub$hash.ID) >= 5)]
+    
+    # Skip if no samples constitute at least 5 cells
+    seurat.obj.sub <- subset(seurat.obj.sub, hash.ID %in% samples.keep)
+    
+        
+    genes.keep <- which(apply(seurat.obj.sub@assays$RNA@counts, 1, function(x) {sum(x != 0)}) >=
+                          (ncol(seurat.obj.sub)/10))
+    seurat.obj.sub <- subset(seurat.obj.sub, features = names(genes.keep))
+  
+    # Pseudobulk
+    sample <- unique(seurat.obj.sub$hash.ID)
+    genes <- rownames(seurat.obj.sub@assays$RNA@counts)
+    
+    pseudo.data <- data.frame(matrix(NA, nrow = length(genes), ncol = length(sample)))
+    rownames(pseudo.data) <- genes
+    colnames(pseudo.data) <- sample
+    
+    pseudo.meta <- data.frame(matrix(NA, nrow = length(sample), ncol = 3))
+    colnames(pseudo.meta) <- c("sample", "drug", "time")
+    
+    for (j in 1:length(sample)) {
+    
+      pseudo.data[, j] <- as.integer(apply(seurat.obj.sub@assays$RNA@counts[genes, which(seurat.obj.sub$hash.ID == sample[j]), drop = F], 1, sum))
+      pseudo.meta$sample[j] <- sample[j]
+      pseudo.meta$drug[j] <- unique(as.character(seurat.obj.sub$drug[which(seurat.obj.sub$hash.ID == sample[j])]))
+      pseudo.meta$time[j] <- unique(as.character(seurat.obj.sub$time[which(seurat.obj.sub$hash.ID == sample[j])]))
+    
+      }
+    
+    # Normalization
+    design <- data.frame(drug = pseudo.meta$drug,
+                         time = pseudo.meta$time)
+    
+    design$drug <- factor(design$drug, levels = groups)
+    design$time <- gsub("h", "", design$time)
+    design$time <- gsub("5d", 5*24, design$time)
+    design$time <- gsub("11d", 11*24, design$time)
+    design$time <- as.numeric(design$time)
+      
+    dds <- DESeqDataSetFromMatrix(pseudo.data, DataFrame(design), ~ time * drug)
+    
+    # Skip if both treatment groups are not found
+    statement1 <- length(unique(dds$drug)) != 2
+    # Skip if at least two samples in each treatment group are not found
+    statement2 <- min(table(dds$drug)) < 2
+  
+    if (statement1 | statement2 ) {
+        print(NA)
+      } else {
+  
+    dds <- DESeq(dds)
+    resultsNames(dds)
+    DEGs.i <- results(dds, name=resultsNames(dds)[3])
+    DEGs.i <- data.frame(DEGs.i)
+  
+    DEGs.i
+    }
+  }
+    
+  names(DEGs) <- cell.types
+  DEGs <- DEGs[!(is.na(DEGs))]
+  return(DEGs)
+}
+```
+
+
+```{r}
+# Hippocampus
+hippo.sema.DEGs <- compute.DE.genes(seurat.obj = hippo, group.1 = "Sema-LPS", group.2 = "Veh-LPS",
+                                    time.points = c("2h", "24h", "5d", "11d"), cell.type = "cell.type2")
+saveRDS(hippo.sema.DEGs, file = "/projects/mludwig/hippo_GLP1/output/DE_genes/hippo_sema-LPS_vs_veh-LPS.rds")
+
+
+hippo.LPS.DEGs <- compute.DE.genes(seurat.obj = hippo, group.1 = "Veh-LPS", group.2 = "Veh-PBS",
+                                   time.points = c("2h", "24h"), cell.type = "cell.type2")
+saveRDS(hippo.LPS.DEGs, file = "/projects/mludwig/hippo_GLP1/output/DE_genes/hippo_veh-LPS_vs_veh-PBS.rds")
+
+
+# DVC
+DVC.sema.DEGs <- compute.DE.genes(seurat.obj = DVC, group.1 = "Sema-LPS", group.2 = "Veh-LPS",
+                                    time.points = c("2h", "24h", "5d", "11d"), cell.type = "cell.type")
+saveRDS(DVC.sema.DEGs, file = "/projects/mludwig/hippo_GLP1/output/DE_genes/DVC_sema-LPS_vs_veh-LPS.rds")
+
+
+
+DVC.LPS.DEGs <- compute.DE.genes(seurat.obj = DVC, group.1 = "Veh-LPS", group.2 = "Veh-PBS",
+                                   time.points = c("2h", "24h"), cell.type = "cell.type")
+saveRDS(DVC.LPS.DEGs, file = "/projects/mludwig/hippo_GLP1/output/DE_genes/DVC_veh-LPS_vs_veh-PBS.rds")
+```
+

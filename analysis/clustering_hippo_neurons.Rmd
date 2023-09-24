@@ -1,0 +1,111 @@
+---
+title: "clustering_hippo_neurons"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+# Load data
+```{r}
+hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj.rds")
+```
+
+# Subset neurons
+```{r}
+hippo.neurons <- subset(hippo, SCT_snn_res.0.1 %in% c(0, 2, 5, 8, 9, 10) | SCT_snn_res.1 == 38)
+```
+
+# Normalize data
+```{r}
+hippo.neurons <- SCTransform(hippo.neurons, verbose = F, method = "qpoisson")
+```
+
+# Run PCA
+```{r}
+# PCA
+VariableFeatures(hippo.neurons[["SCT"]]) <- rownames(hippo.neurons[["SCT"]]@scale.data)
+hippo.neurons <- RunPCA(hippo.neurons, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo.neurons, ndims = 100)
+```
+
+# Run UMAP
+```{r}
+# UMAP
+hippo.neurons <- RunUMAP(hippo.neurons, dims = 1:30, n.neighbors = 50)
+```
+
+# Find clusters
+```{r}
+hippo.neurons <- FindNeighbors(hippo.neurons, dims = 1:30, k.param = 50, verbose = F)
+hippo.neurons <- FindClusters(hippo.neurons, resolution = 0.1, verbose = F)
+hippo.neurons <- FindClusters(hippo.neurons, resolution = 1, verbose = F)
+```
+
+# Remove bad quality cells
+```{r}
+source("/projects/mludwig/hippo_GLP1/code/flag_clusters.R")
+
+flagged.clusters1 <- flag.clusters(seurat.obj = hippo.neurons, 
+                                   genes = c("percent.mt", "Mobp"),
+                                   resolution = "SCT_snn_res.1", quantile = 0.95)
+
+flagged.clusters2 <- flag.clusters2(seurat.obj = hippo.neurons, 
+                                    resolution = "SCT_snn_res.1", fraction = 0.75)
+
+flagged.clusters <- unique(c(flagged.clusters1, flagged.clusters2))
+```
+
+```{r}
+# Remove cluster 12 (bad quality / high percent.mt), 19 (oligodendrocyte markers), and 20, 22, and 29 (run specific)
+# c(12, 19, 20, 22, 29)
+hippo.neurons <- subset(hippo.neurons, SCT_snn_res.1 %in% flagged.clusters, invert = T)
+
+# PCA
+VariableFeatures(hippo.neurons[["SCT"]]) <- rownames(hippo.neurons[["SCT"]]@scale.data)
+hippo.neurons <- RunPCA(hippo.neurons, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo.neurons, ndims = 100)
+```
+
+```{r}
+# UMAP
+hippo.neurons <- RunUMAP(hippo.neurons, dims = 1:30, n.neighbors = 50)
+
+DimPlot(hippo.neurons, group.by = "run", shuffle = T)
+```
+
+```{r}
+# Find clusters
+hippo.neurons <- FindNeighbors(hippo.neurons, dims = 1:30, k.param = 50, verbose = F)
+hippo.neurons <- FindClusters(hippo.neurons, resolution = 0.1, verbose = F)
+hippo.neurons <- FindClusters(hippo.neurons, resolution = 1, verbose = F)
+
+```
+
+```{r}
+hippo.neurons@meta.data <- hippo.neurons@meta.data[, c("nCount_RNA", "nFeature_RNA", 
+                                                       "nCount_SCT", "nFeature_SCT",
+                                                       "percent.mt", "pool", "hash.ID", 
+                                                       "treatment", "drug",
+                                                       "time", "run",  
+                                                       "SCT_snn_res.0.1", "SCT_snn_res.1")]
+
+
+# Save
+saveRDS(hippo.neurons,
+        file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_neurons_Seurat_obj.rds")
+```

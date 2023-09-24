@@ -1,0 +1,206 @@
+---
+title: "initial_clustering_DVC"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+
+```{r}
+mito.genes <- read.xlsx("/projects/mludwig/DVC/data/gene_info/mito_genes.xlsx")
+mito.genes <- mito.genes$Symbol[which(mito.genes$mm10_Chromosome == "chrM")]
+
+# DVC1
+DVC1 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC1.rds")
+
+DVC1$pool <- DVC1$orig.ident
+DVC1[["percent.mt"]] <- PercentageFeatureSet(DVC1, features = mito.genes)
+DVC1$run <- "DVC1"
+DVC1$hash.ID <- DVC1$hash.mcl.ID
+DVC1 <- subset(DVC1, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+# DVC2
+DVC2 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC2.rds")
+
+DVC2$pool <- DVC2$orig.ident
+DVC2[["percent.mt"]] <- PercentageFeatureSet(DVC2, features = mito.genes)
+DVC2$run <- "DVC2"
+DVC2$hash.ID <- DVC2$hash.mcl.ID
+DVC2 <- subset(DVC2, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+
+# DVC3
+DVC3 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC3.rds")
+
+DVC3$pool <- DVC3$orig.ident
+DVC3[["percent.mt"]] <- PercentageFeatureSet(DVC3, features = mito.genes)
+DVC3$run <- "DVC3"
+DVC3$hash.ID <- DVC3$hash.mcl.ID
+DVC3 <- subset(DVC3, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+# DVC4
+DVC4 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC4.rds")
+
+DVC4$pool <- DVC4$orig.ident
+DVC4[["percent.mt"]] <- PercentageFeatureSet(DVC4, features = mito.genes)
+DVC4$run <- "DVC4"
+DVC4$hash.ID <- DVC4$hash.mcl.ID
+DVC4 <- subset(DVC4, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+# DVC5
+DVC5 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC5.rds")
+
+DVC5$pool <- DVC5$orig.ident
+DVC5[["percent.mt"]] <- PercentageFeatureSet(DVC5, features = mito.genes)
+DVC5$run <- "DVC5"
+DVC5$hash.ID <- DVC5$hash.mcl.ID
+DVC5 <- subset(DVC5, nCount_RNA > 2e+05 | percent.mt  > 1, invert = T)
+
+# DVC6
+DVC6 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC6.rds")
+
+DVC6$pool <- DVC6$orig.ident
+DVC6[["percent.mt"]] <- PercentageFeatureSet(DVC6, features = mito.genes)
+DVC6$run <- "DVC6"
+DVC6$hash.ID <- DVC6$hash.mcl.ID
+DVC6 <- subset(DVC6, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+
+# DVC7
+DVC7 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC7.rds")
+
+DVC7$pool <- DVC7$orig.ident
+DVC7[["percent.mt"]] <- PercentageFeatureSet(DVC7, features = mito.genes)
+DVC7$run <- "DVC7"
+DVC7$hash.ID <- DVC7$hash.mcl.ID
+DVC7 <- subset(DVC7, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+
+# DVC8
+DVC8 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/DVC8.rds")
+
+DVC8$pool <- DVC8$orig.ident
+DVC8[["percent.mt"]] <- PercentageFeatureSet(DVC8, features = mito.genes)
+DVC8$run <- "DVC8"
+DVC8$hash.ID <- DVC8$hash.mcl.ID
+DVC8 <- subset(DVC8, nCount_RNA > 2e+05 | percent.mt > 1, invert = T)
+```
+
+```{r}
+# plot1 <- FeatureScatter(DVC1, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC2, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC3, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC4, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC4, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC5, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC5, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC6, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC6, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC7, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC7, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+# 
+# plot1 <- FeatureScatter(DVC8, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(DVC8, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+```
+
+# Merge data
+```{r}
+DVC.list <- list(DVC1, DVC2, DVC3, DVC4,
+                 DVC5, DVC6, DVC7, DVC8) 
+
+names(DVC.list) <- c("DVC1", "DVC2", "DVC3", "DVC4",
+                     "DVC5", "DVC6", "DVC7", "DVC8")
+
+# Merge 
+DVC <- merge(x = DVC.list[[1]], y = DVC.list[-1])
+```
+
+```{r}
+DVC$treatment <- ""
+DVC$treatment[which(DVC$hash.ID %in% seq(1, 8))] <- "Veh-PBS-2h" 
+DVC$treatment[which(DVC$hash.ID %in% c(20,26,33,35,36,38,47,48))] <- "Veh-LPS-2h" 
+DVC$treatment[which(DVC$hash.ID %in% c(50,51,55,59,65,67,79))] <- "Sema-LPS-2h" 
+DVC$treatment[which(DVC$hash.ID %in% seq(9, 16))] <- "Veh-PBS-24h" 
+DVC$treatment[which(DVC$hash.ID %in% c(18,22,27,30,31,32,42,45))] <- "Veh-LPS-24h" 
+DVC$treatment[which(DVC$hash.ID %in% c(57,58,62,63,64,66,68))] <- "Sema-LPS-24h" 
+DVC$treatment[which(DVC$hash.ID %in% c(17,19,21,23,34,37,39,40))] <- "Veh-LPS-5d" 
+DVC$treatment[which(DVC$hash.ID %in% c(52,53,54,69,71,72,49))] <- "Sema-LPS-5d" 
+DVC$treatment[which(DVC$hash.ID %in% c(24,25,28,29,41,43,44,46))] <- "Veh-LPS-11d" 
+DVC$treatment[which(DVC$hash.ID %in% c(56,73,74,75,76,77,78,80))] <- "Sema-LPS-11d" 
+DVC$treatment <- factor(DVC$treatment, levels = c("Veh-PBS-2h", "Veh-PBS-24h",
+                                                  "Veh-LPS-2h", "Veh-LPS-24h", "Veh-LPS-5d", "Veh-LPS-11d",
+                                                  "Sema-LPS-2h", "Sema-LPS-24h", "Sema-LPS-5d", "Sema-LPS-11d"))
+
+DVC$hash.ID <- paste0(DVC$treatment, "-", DVC$hash.ID)
+DVC$drug <- gsub("-[0-9]+.*", "", DVC$treatment)
+DVC$time <- factor(gsub(".*LPS-|.*PBS-|", "", DVC$treatment), levels = c("2h", "24h", "5d", "11d"))
+```
+
+# Normalize data
+```{r}
+DVC <- SCTransform(DVC, verbose = F, method = "qpoisson")
+```
+
+# Run PCA
+```{r}
+# PCA
+VariableFeatures(DVC[["SCT"]]) <- rownames(DVC[["SCT"]]@scale.data)
+DVC <- RunPCA(DVC, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC, ndims = 100)
+```
+
+# Run UMAP
+```{r}
+DVC <- RunUMAP(DVC, dims = 1:30, n.neighbors = 50)
+
+DimPlot(DVC, group.by = "run", shuffle = T)
+```
+
+# Find clusters
+```{r}
+DVC <- FindNeighbors(DVC, dims = 1:30, k.param = 50, verbose = F)
+DVC <- FindClusters(DVC, resolution = 0.1, verbose = F)
+DVC <- FindClusters(DVC, resolution = 1, verbose = F)
+```
+
+
+```{r}
+DVC@meta.data  <- DVC@meta.data[, c("nCount_RNA", "nFeature_RNA", 
+                                    "nCount_SCT", "nFeature_SCT",
+                                    "percent.mt", "pool", "hash.ID", 
+                                    "treatment", "drug", "time", "run", 
+                                    "SCT_snn_res.0.1", "SCT_snn_res.1")]
+saveRDS(DVC, 
+        file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj.rds")
+```
+
+

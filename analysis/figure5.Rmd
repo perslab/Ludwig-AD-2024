@@ -1,0 +1,572 @@
+---
+title: "figure5"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(Seurat)
+library(miloR)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(dplyr)
+library(SingleCellExperiment)
+library(scater)
+library(scran)
+library(patchwork)
+library(cowplot)
+```
+
+# Load Seurat objects
+```{r}
+DVC.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj_labels.rds")
+DVC.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj_labels.rds")
+```
+
+# Load milo objects
+```{r}
+DVC.glia.veh.milo <- readRDS("/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_glia_veh_milo_obj.rds")
+DVC.glia.LPS.milo <- readRDS("/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_glia_LPS_milo_obj.rds")
+
+DVC.neurons.veh.milo <- readRDS("/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_neurons_veh_milo_obj.rds")
+DVC.neurons.LPS.milo <- readRDS("/projects/mludwig/hippo_GLP1/output/milo_objs/DVC_neurons_LPS_milo_obj.rds")
+```
+
+# Figure 5b
+```{r}
+# UMAP of DVC glial cells
+umap.embed.glia <- as.data.frame(DVC.glia@reductions$umap@cell.embeddings)
+umap.embed.glia$cell.type <- DVC.glia$cell.type
+label <- data.frame(cell.type = unique(DVC.glia$cell.type))
+label <- umap.embed.glia %>% 
+  dplyr::group_by(cell.type) %>% 
+  dplyr::summarize(x = median(UMAP_1), y = median(UMAP_2)) 
+
+# Plot
+pal <- c("#E8EE9B", "#B0B4C1", "#7FC97F", "#4E7CAD", "#96BF9E", "#DA2950", "#666666", "#E1B8A8", "#B2258F", "#AB5D28", "#C4AFCB", "#FDD58C")
+
+umap.glia.plot <- ggplot(data = umap.embed.glia, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = cell.type)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        legend.position = "None",
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = pal) +
+  geom_text_repel(data = label, aes(label = cell.type, x=x, y=y), 
+                  size=1.35, fontface="bold", inherit.aes=F, force=5) 
+umap.glia.plot
+```
+
+# Figure 5c
+```{r}
+# UMAP of DVC neurons
+umap.embed.neurons <- as.data.frame(DVC.neurons@reductions$umap@cell.embeddings)
+umap.embed.neurons$cell.type <- DVC.neurons$cell.type
+label <- data.frame(cell.type = unique(umap.embed.neurons$cell.type))
+label <- umap.embed.neurons %>% 
+  dplyr::group_by(cell.type) %>% 
+  dplyr::summarize(x = median(UMAP_1), y = median(UMAP_2)) 
+
+# Plot
+pal <- c("#DA2950", "#7FC97F", "#AB5D28", "#4E7CAD", "#B2258F", "#B0B4C1")
+
+umap.neurons.plot <- ggplot(data = umap.embed.neurons, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = cell.type)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        legend.position = "None",
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = pal) +
+  geom_text_repel(data = label, aes(label = cell.type, x=x, y=y), 
+                  size=1.35, fontface="bold", inherit.aes=F, force=5) 
+umap.neurons.plot
+```
+
+# Figure 5d
+```{r}
+# Differential abundant neighborhoods across DVC cell populations
+# Compute DA neighborhoods per cell type for glial cells (Veh-LPS vs. veh-PBS)
+design <- data.frame(colData(DVC.glia.veh.milo))[, c("hash.ID", "drug", "time")]
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = c("Veh-PBS", "Veh-LPS"))
+rownames(design) <- design$hash.ID
+
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results.glia.veh <- testNhoods(DVC.glia.veh.milo, design = model, design.df = design, model.contrasts = "drugVeh.LPS")
+
+da.results.glia.veh <- annotateNhoods(DVC.glia.veh.milo, da.results.glia.veh, coldata_col = "cell.type")
+da.results.glia.veh$cell.type <- ifelse(da.results.glia.veh$cell.type_fraction < 0.7, "Mixed", da.results.glia.veh$cell.type)
+
+da.neighborhoods.glia.veh <- data.frame(matrix(NA, nrow = length(unique(da.results.glia.veh$cell.type)), ncol = 2))
+colnames(da.neighborhoods.glia.veh) <- c("cell.type", "percent")
+da.neighborhoods.glia.veh$cell.type <- unique(da.results.glia.veh$cell.type)
+
+for (i in 1:nrow(da.neighborhoods.glia.veh)) {
+  cell.type <- da.neighborhoods.glia.veh$cell.type[i]
+  significant <- length(which(da.results.glia.veh$cell.type == cell.type & da.results.glia.veh$SpatialFDR < 0.05)) 
+  all <- length(which(da.results.glia.veh$cell.type == cell.type)) 
+  da.neighborhoods.glia.veh$percent[i] <- significant / all * 100
+}
+
+# Compute DA neighborhoods per cell type for glial cells (Sema-LPS vs. veh-LPS)
+design <- data.frame(colData(DVC.glia.LPS.milo))[, c("hash.ID", "drug", "time")]
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = c("Veh-LPS", "Sema-LPS"))
+rownames(design) <- design$hash.ID
+
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results.glia.LPS <- testNhoods(DVC.glia.LPS.milo, design = model, design.df = design, model.contrasts = "drugSema.LPS")
+
+da.results.glia.LPS <- annotateNhoods(DVC.glia.LPS.milo, da.results.glia.LPS, coldata_col = "cell.type")
+da.results.glia.LPS$cell.type <- ifelse(da.results.glia.LPS$cell.type_fraction < 0.7, "Mixed", da.results.glia.LPS$cell.type)
+
+da.neighborhoods.glia.LPS <- data.frame(matrix(NA, nrow = length(unique(da.results.glia.LPS$cell.type)), ncol = 2))
+colnames(da.neighborhoods.glia.LPS) <- c("cell.type", "percent")
+da.neighborhoods.glia.LPS$cell.type <- unique(da.results.glia.LPS$cell.type)
+
+for (i in 1:nrow(da.neighborhoods.glia.LPS)) {
+  cell.type <- da.neighborhoods.glia.LPS$cell.type[i]
+  significant <- length(which(da.results.glia.LPS$cell.type == cell.type & da.results.glia.LPS$SpatialFDR < 0.05)) 
+  all <- length(which(da.results.glia.LPS$cell.type == cell.type)) 
+  da.neighborhoods.glia.LPS$percent[i] <- significant / all * 100
+}
+
+# Compute DA neighborhoods per cell type for neurons (Veh-LPS vs. veh-PBS)
+design <- data.frame(colData(DVC.neurons.veh.milo))[, c("hash.ID", "drug", "time")]
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = c("Veh-PBS", "Veh-LPS"))
+rownames(design) <- design$hash.ID
+
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results.neurons.veh <- testNhoods(DVC.neurons.veh.milo, design = model, design.df = design, model.contrasts = "drugVeh.LPS")
+
+da.results.neurons.veh <- annotateNhoods(DVC.neurons.veh.milo, da.results.neurons.veh, coldata_col = "cell.type")
+da.results.neurons.veh$cell.type <- ifelse(da.results.neurons.veh$cell.type_fraction < 0.7, "Mixed", da.results.neurons.veh$cell.type)
+
+da.neighborhoods.neurons.veh <- data.frame(matrix(NA, nrow = length(unique(da.results.neurons.veh$cell.type)), ncol = 2))
+colnames(da.neighborhoods.neurons.veh) <- c("cell.type", "percent")
+da.neighborhoods.neurons.veh$cell.type <- unique(da.results.neurons.veh$cell.type)
+
+for (i in 1:nrow(da.neighborhoods.neurons.veh)) {
+  cell.type <- da.neighborhoods.neurons.veh$cell.type[i]
+  significant <- length(which(da.results.neurons.veh$cell.type == cell.type & da.results.neurons.veh$SpatialFDR < 0.05)) 
+  all <- length(which(da.results.neurons.veh$cell.type == cell.type)) 
+  da.neighborhoods.neurons.veh$percent[i] <- significant / all * 100
+  
+}
+
+# Compute DA neighborhoods per cell type for neurons (Sema-LPS vs. veh-LPS)
+design <- data.frame(colData(DVC.neurons.LPS.milo))[, c("hash.ID", "drug", "time")]
+design <- distinct(design)
+design$drug <- factor(design$drug, levels = c("Veh-LPS", "Sema-LPS"))
+rownames(design) <- design$hash.ID
+
+model <- model.matrix(~ drug, data = design)
+colnames(model) <- make.names(colnames(model))
+da.results.neurons.LPS <- testNhoods(DVC.neurons.LPS.milo, design = model, design.df = design, model.contrasts = "drugSema.LPS")
+
+da.results.neurons.LPS <- annotateNhoods(DVC.neurons.LPS.milo, da.results.neurons.LPS, coldata_col = "cell.type")
+da.results.neurons.LPS$cell.type <- ifelse(da.results.neurons.LPS$cell.type_fraction < 0.7, "Mixed", da.results.neurons.LPS$cell.type)
+
+da.neighborhoods.neurons.LPS <- data.frame(matrix(NA, nrow = length(unique(da.results.neurons.LPS$cell.type)), ncol = 2))
+colnames(da.neighborhoods.neurons.LPS) <- c("cell.type", "percent")
+da.neighborhoods.neurons.LPS$cell.type <- unique(da.results.neurons.LPS$cell.type)
+
+for (i in 1:nrow(da.neighborhoods.neurons.LPS)) {
+  cell.type <- da.neighborhoods.neurons.LPS$cell.type[i]
+  significant <- length(which(da.results.neurons.LPS$cell.type == cell.type & da.results.neurons.LPS$SpatialFDR < 0.05)) 
+  all <- length(which(da.results.neurons.LPS$cell.type == cell.type)) 
+  da.neighborhoods.neurons.LPS$percent[i] <- significant / all * 100
+}
+
+
+# Merge
+da.neighborhoods.glia.veh$comparison <- "Veh-LPS vs. veh-PBS"
+da.neighborhoods.glia.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+da.neighborhoods.neurons.veh$comparison <- "Veh-LPS vs. veh-PBS"
+da.neighborhoods.neurons.LPS$comparison <- "Sema-LPS vs. veh-LPS"
+
+da.neighborhoods <- rbind(da.neighborhoods.glia.veh, da.neighborhoods.glia.LPS,
+                          da.neighborhoods.neurons.veh, da.neighborhoods.neurons.LPS)
+
+da.neighborhoods$comparison <- factor(da.neighborhoods$comparison, levels = c("Veh-LPS vs. veh-PBS", "Sema-LPS vs. veh-LPS"))
+
+da.neighborhoods <- da.neighborhoods[!(da.neighborhoods$cell.type == "Mixed"), ]
+da.neighborhoods$cell.type <- factor(da.neighborhoods$cell.type,
+                                     levels = c(levels(DVC.glia$cell.type), sort(unique(DVC.neurons$cell.type))))
+
+
+da.neighborhoods[order(da.neighborhoods$percent, decreasing = T),]
+```
+
+```{r}
+# Plot
+DA.neighborhood.plot <- ggplot(da.neighborhoods, aes(x = cell.type, y = percent, fill = comparison)) +
+  geom_bar(position = position_dodge(), stat="identity", colour="black", width=0.8, size=0.3) +
+  theme_pubr(legend = "top") +
+  theme(axis.text.y = element_text(size=6, face="bold"),
+        axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0.1, 0, -0.25, 0.35), "cm"),
+        plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) +
+  xlab("") + ylab("DA neighborhoods (%)") +
+  scale_fill_manual(values = c("#96C2D0", "#FC6A03")) +
+  scale_y_continuous(breaks = seq(0, 80, 20))
+
+DA.neighborhood.plot
+```
+
+
+# Figure 5e
+```{r}
+# Neutrophil proportions
+# Load data
+neutrophils.prop.list <- readRDS("/projects/mludwig/hippo_GLP1/output/cacoa/DVC_neutrophils_prop_list.rds")
+
+neutrophils.veh.loadings <- neutrophils.prop.list[["veh.loadings"]]
+neutrophils.veh.p <- neutrophils.prop.list[["veh.p"]]
+neutrophils.LPS.loadings <- neutrophils.prop.list[["LPS.loadings"]]
+neutrophils.LPS.p <- neutrophils.prop.list[["LPS.p"]]
+
+neutrophils <- as.data.frame(table(DVC.glia$hash.ID[which(DVC.glia$cell.type == "Neutrophils")]))
+cells.all <- as.data.frame(table(DVC.glia$hash.ID))
+
+prop.data <- merge(neutrophils, cells.all, by = "Var1")
+colnames(prop.data) <- c("hash.ID", "freq.neutrophils", "freq.all")
+prop.data$prop <- prop.data$freq.neutrophils / prop.data$freq.all * 100
+prop.data$treatment <- gsub("-[0-9]+$", "", unique(prop.data$hash.ID))
+prop.data$treatment <- factor(prop.data$treatment, levels = c("Veh-PBS-2h", "Veh-PBS-24h",
+                                                               "Veh-LPS-2h", "Veh-LPS-24h",
+                                                               "Veh-LPS-5d", "Veh-LPS-11d",
+                                                               "Sema-LPS-2h", "Sema-LPS-24h",
+                                                               "Sema-LPS-5d", "Sema-LPS-11d"))
+prop.data$drug <- factor(gsub("-[0-9].*", "", prop.data$treatment),
+                         levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS"))
+prop.data$time <- factor(gsub(".*-", "", prop.data$treatment),
+                         levels = c("2h", "24h", "5d", "11d"))
+
+neutrophils.LPS.p$comparison <- "LPS"
+neutrophils.veh.p$comparison <- "veh"
+neutrophils.p <- rbind(neutrophils.LPS.p, neutrophils.veh.p)
+neutrophils.p$p.adjust <- p.adjust(neutrophils.p$p.value, method = "fdr")
+neutrophils.p$asterisk <- ""
+neutrophils.p$asterisk[which(neutrophils.p$p.adjust <= 0.05 & neutrophils.p$p.adjust > 0.01)] <- "*"
+neutrophils.p$asterisk[which(neutrophils.p$p.adjust <= 0.01 & neutrophils.p$p.adjust > 0.001)] <- "**"
+neutrophils.p$asterisk[which(neutrophils.p$p.adjust <= 0.001)] <- "***"
+neutrophils.p$position <- vector(mode = "numeric", length = nrow(neutrophils.p))
+neutrophils.p$symbol <- round(neutrophils.p$p.adjust, digits = 3)
+neutrophils.p$symbol <- ifelse(neutrophils.p$symbol <= 0.05, neutrophils.p$symbol, "NS")
+
+for (i in 1:nrow(neutrophils.p)) {
+
+  comparison <- neutrophils.p$comparison[i]
+  time <- neutrophils.p$time[i]
+
+  if (comparison == "LPS") {
+    idx <- which(prop.data$drug %in% c("Sema-LPS", "Veh-LPS") & prop.data$time == time)
+  }
+  else {
+    idx <- which(prop.data$drug %in% c("Sema-LPS", "Veh-LPS") & prop.data$time == time)
+
+  }
+  neutrophils.p$position[i] <- max(prop.data$prop[idx])
+}
+
+asterisk.position <- c()
+for (i in unique(prop.data$treatment)) {
+  asterisk.position <- c(asterisk.position,
+                         max(prop.data$prop[which(prop.data$treatment == i)]))
+}
+
+# Plot
+neutrophil.prop.plot <- ggplot(prop.data, aes(x = time, y = prop, fill = drug)) +
+  geom_boxplot(notch = F, size = 0.3, outlier.shape = NA,
+           position = position_dodge(0.6), width = 0.5) +
+  theme_pubr() +
+  theme(axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, -5, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, -0.25, 0), "cm"),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) +
+  ylab("Neutrophil proportion (%)") + xlab("") +
+  scale_fill_manual(values = c("#33CC66", "#336666", "#A60FA6")) +
+  geom_signif(y_position=c(0.5 + neutrophils.p$position[c(5, 1, 6, 2)]), xmin=c(0.8, 1.01, 1.8, 2.01),
+              xmax=c(0.99, 1.2, 1.99, 2.2), tip_length = 0.02,
+              fontface = "bold",
+              annotation = neutrophils.p$symbol[c(5, 1, 6, 2)],
+              size = 0.2, textsize = 1.15, parse = F, hjust = 0.4) +
+  scale_y_continuous(limits = c(0, 8))
+neutrophil.prop.plot
+```
+
+# Figure 5f
+```{r}
+# Compute correlation between DE genes from hippocampus and DVC
+# Load hippocampus glial cells
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+
+# Load DE analysis results
+hippo.sema.DEGs <- readRDS("/projects/mludwig/hippo_GLP1/output/DE_genes/hippo_sema-LPS_vs_veh-LPS.rds")
+hippo.LPS.DEGs <- readRDS("/projects/mludwig/hippo_GLP1/output/DE_genes/hippo_veh-LPS_vs_veh-PBS.rds")
+DVC.sema.DEGs <- readRDS("/projects/mludwig/hippo_GLP1/output/DE_genes/DVC_sema-LPS_vs_veh-LPS.rds")
+DVC.LPS.DEGs <- readRDS("/projects/mludwig/hippo_GLP1/output/DE_genes/DVC_veh-LPS_vs_veh-PBS.rds")
+```
+
+```{r}
+# Compute correlation
+cell.types <- sort(intersect(unique(hippo.glia$cell.type2), unique(DVC.glia$cell.type)))
+cor.data <- data.frame(matrix(NA, nrow = length(cell.types), ncol = 3)) 
+colnames(cor.data) <- c("cell.type", "LPS_effects", "sema_effects")
+cor.data$cell.type <- cell.types
+
+for (i in 1:nrow(cor.data)) {
+  
+  cell.type <- as.character(cor.data$cell.type[i])
+
+  # Compute correlation for LPS-induced effects
+  LPS.DEGs1 <- hippo.LPS.DEGs[[cell.type]]
+  LPS.DEGs2 <- DVC.LPS.DEGs[[cell.type]]
+  
+  
+  if(is.null(LPS.DEGs1) | is.null(LPS.DEGs2)) {
+    
+    cor.data$LPS_effects[i] <- NA
+  }
+  else {
+    
+    n <- 100
+    LPS.genes1 <- rownames(LPS.DEGs1)[order(LPS.DEGs1$padj)][1:n]  
+    LPS.genes2 <- rownames(LPS.DEGs2)[order(LPS.DEGs2$padj)][1:n]
+    LPS.genes <- union(LPS.genes1, LPS.genes2)
+  
+    LPS.cor <- cor(LPS.DEGs1[LPS.genes, "log2FoldChange"], LPS.DEGs2[LPS.genes, "log2FoldChange"], 
+               method = "spearman", use="complete.obs")
+    
+    
+    cor.data$LPS_effects[i] <- LPS.cor
+  }
+
+  # Compute correlation for sema-induced effects
+  sema.DEGs1 <- hippo.sema.DEGs[[cell.type]]
+  sema.DEGs2 <- DVC.sema.DEGs[[cell.type]]
+
+  
+  if(is.null(sema.DEGs1) | is.null(sema.DEGs2)) {
+    
+    cor.data$sema_effects[i] <- NA
+    
+  }
+  else {
+    
+    n <- 100
+    sema.genes1 <- rownames(sema.DEGs1)[order(sema.DEGs1$padj)][1:n]  
+    sema.genes2 <- rownames(sema.DEGs2)[order(sema.DEGs2$padj)][1:n]
+    sema.genes <- union(sema.genes1, sema.genes2)
+  
+    sema.cor <- cor(sema.DEGs1[sema.genes, "log2FoldChange"], sema.DEGs2[sema.genes, "log2FoldChange"], 
+               method = "spearman", use="complete.obs")
+    
+    
+    cor.data$sema_effects[i] <- sema.cor
+    }
+  }
+
+cor.data.melt <- reshape2::melt(cor.data, id.vars = "cell.type")
+colnames(cor.data.melt) <- c("cell.type", "treatment", "cor")
+
+# Plot
+pal <- c("#E8EE9B", "#B0B4C1", "#7FC97F", "#4E7CAD", "#DA2950", "#666666", "#E1B8A8", "#B2258F", "#AB5D28", "#FDD58C")
+cor.area.plot <- ggplot(cor.data.melt, aes(x = treatment, y = cor)) +
+  geom_jitter(aes(color = cell.type), 
+                position = position_jitter(0.2, seed = 1), size = 1.2) +
+  theme_pubr(legend = "right") +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.3, "cm"),
+        legend.key.width = unit(0.6, "cm"),
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, -5, -10, -5)) +
+  ylim(-1, 1) + xlab("") + ylab("Hippocampus vs. DVC (Spearman's rho)") +
+  scale_color_manual(values = pal) + 
+ scale_x_discrete(labels=c("LPS_effects" = "LPS-induced effects", "sema_effects" = "Semaglutide-induced effects"))
+
+cor.area.plot
+```
+
+# Figure 5f
+```{r}
+# Compute correlation between LPS- and semaglutide-induced DE genes
+cell.types <- sort(union(unique(hippo.glia$cell.type2), unique(DVC.glia$cell.type)))
+cor.data <- data.frame(matrix(NA, nrow = length(cell.types), ncol = 3)) 
+colnames(cor.data) <- c("cell.type", "hippo", "DVC")
+cor.data$cell.type <- cell.types
+
+for (i in 1:nrow(cor.data)) {
+  
+  cell.type <- as.character(cor.data$cell.type[i])
+  
+  # Compute correlation for hippocampus
+  hippo.DEGs1 <- hippo.sema.DEGs[[cell.type]]
+  hippo.DEGs2 <- hippo.LPS.DEGs[[cell.type]]
+
+  if(is.null(hippo.DEGs1) | is.null(hippo.DEGs2)) {
+    
+    cor.data$hippo[i] <- NA
+    
+  }
+  else {
+    
+    n <- 100
+    hippo.genes1 <- rownames(hippo.DEGs1)[order(hippo.DEGs1$padj)][1:n]  
+    hippo.genes2 <- rownames(hippo.DEGs2)[order(hippo.DEGs2$padj)][1:n]
+    hippo.genes <- union(hippo.genes1, hippo.genes2)
+  
+    hippo.cor <- cor(hippo.DEGs1[hippo.genes, "log2FoldChange"], hippo.DEGs2[hippo.genes, "log2FoldChange"], 
+               method = "spearman", use="complete.obs")
+    
+    
+    cor.data$hippo[i] <- hippo.cor
+
+    
+  }
+
+  # Compute correlation for DVC
+  DVC.DEGs1 <- DVC.sema.DEGs[[cell.type]]
+  DVC.DEGs2 <- DVC.LPS.DEGs[[cell.type]]
+
+  if(is.null(DVC.DEGs1) | is.null(DVC.DEGs2)) {
+  
+  cor.data$DVC[i] <- NA
+    
+  }
+  else {
+    n <- 100
+    DVC.genes1 <- rownames(DVC.DEGs1)[order(DVC.DEGs1$padj)][1:n]  
+    DVC.genes2 <- rownames(DVC.DEGs2)[order(DVC.DEGs2$padj)][1:n]
+    DVC.genes <- union(DVC.genes1, DVC.genes2)
+  
+    DVC.cor <- cor(DVC.DEGs1[DVC.genes, "log2FoldChange"], DVC.DEGs2[DVC.genes, "log2FoldChange"], 
+               method = "spearman", use="complete.obs")
+    
+    
+    cor.data$DVC[i] <- DVC.cor
+    
+  }
+}
+
+cor.data.melt <- reshape2::melt(cor.data, id.vars = "cell.type")
+colnames(cor.data.melt) <- c("cell.type", "area", "cor")
+
+# Plot
+pal <- c("#E8EE9B", "#B0B4C1", "#7FC97F", "#4E7CAD", "#96BF9E", "#DA2950", "#666666", "#E1B8A8", "#B2258F", "#AB5D28", "#C4AFCB", "#FDD58C")
+cor.treatment.plot <- ggplot(cor.data.melt, aes(x = area, y = cor)) +
+  geom_jitter(aes(color = cell.type), 
+                position = position_jitter(0.2), size = 1.2) +
+  theme_pubr(legend = "right") +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        legend.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.3, "cm"),
+        legend.key.width = unit(0.6, "cm"),
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, -5, -10, -5)) +
+  ylim(-1, 1) + xlab("") + ylab("LPS- vs. semaglutide-induced effects (Spearman's rho)") +
+  scale_color_manual(values = pal) + 
+ scale_x_discrete(labels=c("hippo" = "Hippocampus", "DVC" = "DVC"))
+
+cor.treatment.plot
+```
+# Combine all plots
+```{r}
+blank.plot <- ggplot() + geom_blank(aes(0.1, 0.1)) + 
+  cowplot::theme_nothing()
+
+plot1 <- plot_grid(blank.plot,
+                   umap.glia.plot + theme(plot.margin = unit(c(0, 0.2, 0, 0), "cm")), 
+                   umap.neurons.plot + theme(plot.margin = unit(c(0, 0, 0, 0.2), "cm")), 
+                   ncol = 3, align = "h", axis = "tb",                   
+                   rel_widths = c(1.5, 1, 1)) 
+
+plot2 <- plot_grid(DA.neighborhood.plot + theme(plot.margin = unit(c(0, 0, 0.1, 0), "cm")), 
+                   neutrophil.prop.plot + theme(plot.margin = unit(c(0.1, 0, 0, 0), "cm")), 
+                   ncol = 1, align = "v", axis = "rl",                   
+                   rel_heights = c(1, 0.8)) 
+
+
+plot3 <- plot_grid(blank.plot, get_legend(cor.treatment.plot), blank.plot,
+                   ncol = 1, align = "v", axis = "rl",                   
+                   rel_heights = c(0.2, 1, 0.5)) 
+
+plot4 <- plot_grid(cor.area.plot + theme(legend.position = "none",
+                                         plot.margin = unit(c(0, 0.2, 0, 0), "cm")), 
+                   cor.treatment.plot + theme(legend.position = "none",
+                                              plot.margin = unit(c(0, 0, 0, 0.2), "cm")), 
+                   plot3,
+                   ncol = 3, align = "h", axis = "tb",                   
+                   rel_widths = c(1, 1, 1)) 
+
+plot5 <- plot_grid(plot2 + theme(plot.margin = unit(c(0, 0.1, 0, 0.5), "cm")), 
+                   plot4 + theme(plot.margin = unit(c(0, 0, 0, 0.2), "cm")), 
+                   ncol = 2, align = "h", axis = "tb",                   
+                   rel_widths = c(1.5, 2)) 
+
+# Margin: top, right, bottom, and left
+fig5 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")),
+                  plot5 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")),
+                  ncol = 1, align = "v",
+                  rel_heights = c(0.5, 1))
+
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure5.png", fig5, height = 130, width = 183,
+       units = "mm")
+
+```

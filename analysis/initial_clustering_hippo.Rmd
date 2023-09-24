@@ -1,0 +1,131 @@
+---
+title: "initial_clustering_hippo"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+
+```{r}
+mito.genes <- read.xlsx("/projects/mludwig/DVC/data/gene_info/mito_genes.xlsx")
+mito.genes <- mito.genes$Symbol[which(mito.genes$mm10_Chromosome == "chrM")]
+
+# Hippo batch 1
+hippo1 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/hippo1.rds")
+hippo1$pool <- hippo1$orig.ident
+hippo1[["percent.mt"]] <- PercentageFeatureSet(hippo1, features = mito.genes)
+hippo1$run <- "hippo1"
+hippo1$hash.ID <- hippo1$hash.mcl.ID
+# plot1 <- FeatureScatter(hippo1, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot2 <- FeatureScatter(hippo1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot1 + plot2
+hippo1 <- subset(hippo1, nCount_RNA > 1e+05 | nFeature_RNA > 1e+04 | percent.mt  > 1, invert = T)
+
+# Hippo batch 2
+hippo2 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/hippo2.rds")
+hippo2$pool <- hippo2$orig.ident
+hippo2[["percent.mt"]] <- PercentageFeatureSet(hippo2, features = mito.genes)
+hippo2$run <- "hippo2"
+hippo2$hash.ID <- hippo2$hash.mcl.ID
+# Correct mislabeling
+hippo2$hash.ID[which(hippo2$hash.ID == "Sema-PBS-11d-77")] <- "Sema-LPS-11d-77"
+# plot3 <- FeatureScatter(hippo2, feature1 = "nCount_RNA", feature2 = "percent.mt") + NoLegend()
+# plot4 <- FeatureScatter(hippo2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + NoLegend()
+# plot3 + plot4
+hippo2 <- subset(hippo2, nCount_RNA > 5e+04 | nFeature_RNA > 8000 | percent.mt  > 1, invert = T)
+
+# Hippo batch 3
+hippo3 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/hippo3.rds")
+hippo3$pool <- hippo3$orig.ident
+hippo3[["percent.mt"]] <- PercentageFeatureSet(hippo3, features = mito.genes)
+hippo3$run <- "hippo3"
+hippo3$hash.ID <- hippo3$hash.mcl.ID
+hippo3 <- subset(hippo3, pool == "SI-TT-F1" & hash.ID == "Veh-LPS-24h-45", invert = T)
+# Correct mislabeling
+hippo3$hash.ID[which(hippo3$hash.ID == "Veh-PBS-2h-37")] <- "Veh-LPS-5d-37"
+# plot5 <- FeatureScatter(hippo3, feature1 = "nCount_RNA", feature2 = "percent.mt")
+# plot6 <- FeatureScatter(hippo3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+# plot5 + plot6
+hippo3 <- subset(hippo3, nCount_RNA > 5e+04 | nFeature_RNA > 8000 | percent.mt  > 1, invert = T)
+
+# Hippo batch 4
+hippo4 <- readRDS("/projects/mludwig/hippo_GLP1/data/snRNA/hippo4.rds")
+hippo4$pool <- hippo4$orig.ident
+hippo4[["percent.mt"]] <- PercentageFeatureSet(hippo4, features = mito.genes)
+hippo4$run <- "hippo4"
+hippo4$hash.ID <- hippo4$hash.mcl.ID
+# plot7 <- FeatureScatter(hippo4, feature1 = "nCount_RNA", feature2 = "percent.mt")
+# plot8 <- FeatureScatter(hippo4, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+# plot7 + plot8
+hippo4 <- subset(hippo4, nCount_RNA > 1e+05 | nFeature_RNA > 1e+04 | percent.mt  > 1, invert = T)
+
+```
+
+# Merge data
+```{r}
+hippo.list <- list(hippo1, hippo2, hippo3, hippo4) 
+
+names(hippo.list) <- c("hippo1", "hippo2", "hippo3", "hippo4")
+
+# Merge 
+hippo <- merge(x = hippo.list[[1]], y = hippo.list[-1])
+```
+
+# Normalize data
+```{r}
+hippo <- SCTransform(hippo, verbose = F, method = "qpoisson")
+```
+
+```{r}
+hippo$treatment <- gsub("-[0-9]+$", "", hippo$hash.ID)
+hippo$treatment <- factor(hippo$treatment, levels = c("Veh-PBS-2h", "Veh-PBS-24h",
+                                                      "Veh-LPS-2h", "Veh-LPS-24h", "Veh-LPS-5d", "Veh-LPS-11d",
+                                                      "Sema-LPS-2h", "Sema-LPS-24h", "Sema-LPS-5d", "Sema-LPS-11d"))
+hippo$drug <- gsub("-[0-9]+.*", "", hippo$treatment)
+hippo$time <- factor(gsub(".*LPS-|.*PBS-|", "", hippo$treatment), levels = c("2h", "24h", "5d", "11d"))
+```
+
+```{r}
+# PCA
+VariableFeatures(hippo[["SCT"]]) <- rownames(hippo[["SCT"]]@scale.data)
+hippo <- RunPCA(hippo, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(hippo, ndims = 100)
+```
+
+```{r}
+# UMAP
+hippo <- RunUMAP(hippo, dims = 1:30, n.neighbors = 50)
+
+DimPlot(hippo, group.by = "run", shuffle = T)
+```
+
+```{r}
+# Find clusters
+hippo <- FindNeighbors(hippo, dims = 1:30, k.param = 50, verbose = F)
+hippo <- FindClusters(hippo, resolution = 0.1, verbose = F)
+hippo <- FindClusters(hippo, resolution = 1, verbose = F)
+```
+
+
+```{r}
+hippo@meta.data  <- hippo@meta.data[, c("nCount_RNA", "nFeature_RNA", 
+                                        "nCount_SCT", "nFeature_SCT",
+                                        "percent.mt", "pool", "hash.ID", 
+                                        "treatment", "drug", "time", "run", 
+                                        "SCT_snn_res.0.1", "SCT_snn_res.1")]
+saveRDS(hippo, file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/new_hippo_Seurat_obj.rds")
+```
+

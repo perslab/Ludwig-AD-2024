@@ -1,0 +1,531 @@
+---
+title: "figure1"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(lme4)
+library(emmeans)
+library(openxlsx)
+library(plotrix)
+library(dplyr) 
+library(tidyverse)
+library(Matrix)
+library(tidyr)
+library(reshape2) 
+library(DESeq2)
+library(lmtest)
+library(emmeans)
+library(gprofiler2)
+library(WGCNA)
+library(cowplot)
+```
+
+# Figure 1b
+```{r}
+# Load in vivo data
+invivo <- read.xlsx("/projects/mludwig/hippo_GLP1/data/in_vivo/bulk_in_vivo_data.xlsx", sheet = 1)
+invivo <- invivo[, 1:14]
+colnames(invivo) <- c("treatment", "study", "animal.ID", "diet",
+                      "group", "team", "dose", "dosing.method", 
+                      "comments", "BW_gram", "GFAP_percent_brain", "GFAP_percent_hippo",
+                      "IBA1_percent_brain", "IBA1_percent_hippo")
+
+IHC <- invivo[, c("treatment", "GFAP_percent_brain", "GFAP_percent_hippo",
+                  "IBA1_percent_brain", "IBA1_percent_hippo")]
+IHC$treatment <- gsub(" \\(19\\)", "-2d", IHC$treatment)
+IHC$treatment <- gsub(" \\(28\\)", "-11d", IHC$treatment)
+IHC$treatment <- gsub("Cmpd X \\+ LPS ", "Sema-LPS-", IHC$treatment)
+IHC$treatment <- gsub("Vehicle \\+ LPS ", "Veh-LPS-", IHC$treatment)
+IHC$treatment <- gsub("Cmpd X \\+ vehicle", "Sema-PBS", IHC$treatment)
+IHC$treatment <- gsub("Vehicle \\+ vehicle", "Veh-PBS", IHC$treatment)
+IHC$drug <- gsub("-2d|-11d", "", IHC$treatment)
+IHC$time <- gsub(".*-", "", IHC$treatment)
+
+IHC$GFAP_percent_brain <- as.numeric(IHC$GFAP_percent_brain)
+IHC$GFAP_percent_hippo <- as.numeric(IHC$GFAP_percent_hippo)
+IHC$IBA1_percent_brain <- as.numeric(IHC$IBA1_percent_brain)
+IHC$IBA1_percent_hippo <- as.numeric(IHC$IBA1_percent_hippo)
+```
+
+
+```{r}
+# Compute statistics for IBA1 percent in the hippocampus 
+IBA1.hippo <- IHC[which(IHC$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                  c("drug", "time", "IBA1_percent_hippo")] 
+IBA1.hippo$drug <- factor(IBA1.hippo$drug, levels = c("Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.hippo$time <- factor(IBA1.hippo$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(IBA1_percent_hippo ~ drug * time, data=IBA1.hippo)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][2])
+           
+p.symbol <- round(p.adj, digits = 3)
+p.symbol <- ifelse(p.symbol <= 0.05, p.symbol, "NS")
+```
+
+
+```{r}
+# Plot hippocampus at day 2
+IBA1.hippo.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "IBA1_percent_hippo")] 
+IBA1.hippo.2d$drug <- factor(IBA1.hippo.2d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.hippo.2d <- IBA1.hippo.2d[!(is.na(IBA1.hippo.2d$IBA1_percent_hippo)),]
+
+# Mean and SEM
+IBA1.hippo.2d.summary <- aggregate(IBA1.hippo.2d[, c("IBA1_percent_hippo"), drop = F], by = list(IBA1.hippo.2d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.hippo.2d.summary) <- c("drug", "mean")
+IBA1.hippo.2d.summary$SEM <- aggregate(IBA1.hippo.2d[, c("IBA1_percent_hippo"), drop = F], by = list(IBA1.hippo.2d$drug), FUN = std.error, na.rm = T)$IBA1_percent_hippo
+IBA1.hippo.2d.summary$title <- "Day 2: Hippocampus"
+
+asterisk.position <- max(na.omit(IBA1.hippo.2d$IBA1_percent_hippo[which(IBA1.hippo.2d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+IBA1.hippo.2d.plot <- ggplot(IBA1.hippo.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.hippo.2d, aes(x = drug, y = IBA1_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.hippo.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) + 
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = 3, 
+              xmax = 4, tip_length = 0.01, 
+              fontface = "bold", 
+              annotation = p.symbol[1],
+              size = 0.2, textsize = 1.55, parse = T) 
+
+IBA1.hippo.2d.plot
+```
+
+
+
+```{r}
+# Plot hippocampus at day 11
+IBA1.hippo.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                      c("drug", "IBA1_percent_hippo")] 
+IBA1.hippo.11d$drug <- factor(IBA1.hippo.11d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.hippo.11d <- IBA1.hippo.11d[!(is.na(IBA1.hippo.11d$IBA1_percent_hippo)),]
+
+# Mean and SEM
+IBA1.hippo.11d.summary <- aggregate(IBA1.hippo.11d[, c("IBA1_percent_hippo"), drop = F], by = list(IBA1.hippo.11d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.hippo.11d.summary) <- c("drug", "mean")
+IBA1.hippo.11d.summary$SEM <- aggregate(IBA1.hippo.11d[, c("IBA1_percent_hippo"), drop = F], by = list(IBA1.hippo.11d$drug), FUN = std.error, na.rm = T)$IBA1_percent_hippo
+IBA1.hippo.11d.summary$title <- "Day 11: Hippocampus"
+
+asterisk.position <- max(na.omit(IBA1.hippo.11d$IBA1_percent_hippo[which(IBA1.hippo.11d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+IBA1.hippo.11d.plot <- ggplot(IBA1.hippo.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.hippo.11d, aes(x = drug, y = IBA1_percent_hippo),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.hippo.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin = 3.0, 
+      xmax = 4, tip_length = 0.01, 
+          fontface = "bold", 
+          annotation = "'9x10'^-4",
+          size = 0.2, textsize = 1.5, parse = T) 
+
+IBA1.hippo.11d.plot
+```
+
+
+```{r}
+# Compute statistics for IBA1 percent in the brain 
+IBA1.brain <- IHC[which(IHC$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                  c("drug", "time", "IBA1_percent_brain")] 
+IBA1.brain$drug <- factor(IBA1.brain$drug, levels = c("Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.brain$time <- factor(IBA1.brain$time, levels = c("2d", "11d"))
+
+# Linear model
+model <- lm(IBA1_percent_brain ~ drug * time, data=IBA1.brain)
+
+# Least-squares means
+model <- lsmeans(model, pairwise ~ drug | time, adjust = "fdr")
+model <- test(model$contrasts)
+
+p.adj <- c(model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][1],
+           model$p.value[which(model$contrast == "(Veh-LPS-1.0) - (Sema-LPS-1.0)")][2])
+           
+p.symbol <- round(p.adj, digits = 3)
+p.symbol <- ifelse(p.symbol <= 0.05, p.symbol, "NS")
+```
+
+
+```{r}
+# Plot brain at day 2
+IBA1.brain.2d <- IHC[which(IHC$time == "2d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "IBA1_percent_brain")] 
+IBA1.brain.2d$drug <- factor(IBA1.brain.2d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.brain.2d <- IBA1.brain.2d[!(is.na(IBA1.brain.2d$IBA1_percent_brain)),]
+
+# Mean and SEM
+IBA1.brain.2d.summary <- aggregate(IBA1.brain.2d[, c("IBA1_percent_brain"), drop = F], by = list(IBA1.brain.2d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.brain.2d.summary) <- c("drug", "mean")
+IBA1.brain.2d.summary$SEM <- aggregate(IBA1.brain.2d[, c("IBA1_percent_brain"), drop = F], by = list(IBA1.brain.2d$drug), FUN = std.error, na.rm = T)$IBA1_percent_brain
+IBA1.brain.2d.summary$title <- "Day 2: Entire brain"
+
+asterisk.position <- max(na.omit(IBA1.brain.2d$IBA1_percent_brain[which(IBA1.brain.2d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+IBA1.brain.2d.plot <- ggplot(IBA1.brain.2d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.brain.2d, aes(x = drug, y = IBA1_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.brain.2d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal)+
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+  geom_signif(y_position = asterisk.position + 2, xmin =3, 
+              xmax = 4, tip_length = 0.01, 
+              fontface = "bold",  
+              annotation = p.symbol[1],
+              size = 0.2, textsize = 1.55, parse = T) 
+
+IBA1.brain.2d.plot
+```
+
+
+```{r}
+# Plot brain at day 11
+IBA1.brain.11d <- IHC[which(IHC$time == "11d" & IHC$drug %in% c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0")), 
+                     c("drug", "IBA1_percent_brain")] 
+IBA1.brain.11d$drug <- factor(IBA1.brain.11d$drug, levels = c("Veh-PBS", "Sema-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+IBA1.brain.11d <- IBA1.brain.11d[!(is.na(IBA1.brain.11d$IBA1_percent_brain)),]
+
+# Mean and SEM
+IBA1.brain.11d.summary <- aggregate(IBA1.brain.11d[, c("IBA1_percent_brain"), drop = F], by = list(IBA1.brain.11d$drug), FUN = mean, na.rm = T)
+colnames(IBA1.brain.11d.summary) <- c("drug", "mean")
+IBA1.brain.11d.summary$SEM <- aggregate(IBA1.brain.11d[, c("IBA1_percent_brain"), drop = F], by = list(IBA1.brain.11d$drug), FUN = std.error, na.rm = T)$IBA1_percent_brain
+IBA1.brain.11d.summary$title <- "Day 11: Entire brain"
+
+asterisk.position <- max(na.omit(IBA1.brain.11d$IBA1_percent_brain[which(IBA1.brain.11d$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0"))]))
+
+# Plot
+pal <- c("#33CC66", "#54026B", "#336666", "#A60FA6")
+IBA1.brain.11d.plot <- ggplot(IBA1.brain.11d.summary, aes(x = drug, y = mean, fill = drug)) +
+  facet_wrap(~title, ncol = 1) +
+  geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
+  geom_point(data = IBA1.brain.11d, aes(x = drug, y = IBA1_percent_brain),
+             size = 0.2, position = position_jitter(w = 0.05, height = 0, seed = 1)) +
+  geom_errorbar(data = IBA1.brain.11d.summary, aes(ymin = mean, ymax = mean+SEM), width = 0.5, 
+                position=position_dodge(0.7), size = 0.3) +
+  xlab("") + ylab("IBA1 (% fractional area)") +
+  theme_pubr() + 
+  theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black", size = 0.4),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.title.y = element_text(size=6, face="bold"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.position = "none",
+        strip.text = element_text(size=6, face="bold")) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +
+ geom_signif(y_position = asterisk.position + 2, xmin = 3, 
+             xmax = 4, tip_length = 0.01,
+             fontface = "bold", 
+             annotation = p.symbol[2],
+             size = 0.2, textsize = 1.55, parse = T) 
+
+IBA1.brain.11d.plot
+```
+
+# Figure 1c
+```{r}
+# Load WGCNA output
+expr.mat <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_bulk_exprmat.rds")
+network <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_bulk_network.rds")
+MEs <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_bulk_MEs.rds")
+gene.assignment <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_bulk_gene_assignment.rds")
+colors <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_bulk_colors.rds")
+```
+
+```{r}
+# Function to find differentially activated modules
+find_diff_activated_modules <- function(samples, MEs) {
+  
+  treatment <- gsub("_.*", "", samples)
+  treatment <- factor(treatment)
+
+  MEs.sub <- MEs[samples, !(colnames(MEs) == paste0("M", ncol(MEs)))]
+  
+  p.values <- data.frame(matrix(NA, nrow = 1, ncol = ncol(MEs.sub)))
+  colnames(p.values) <- colnames(MEs.sub)
+
+  for (i in 1:ncol(MEs.sub)) {
+    
+    module.eigengene <- MEs.sub[, i]
+    
+    # Logistic regression
+    model1 <- glm(treatment ~ module.eigengene, family = "binomial", 
+                  control = list(maxit = 50))
+    model2 <- glm(treatment ~ 1, family = "binomial", control = list(maxit = 50))
+    
+    # Likelihood ratio test
+    lrtest <- lrtest(model1, model2)
+    p.values[,i] <- lrtest$Pr[2]
+    
+  }
+  
+  # Adjust for multiple testing
+  fdr.values <- p.adjust(p.values, method = "fdr")
+  dim(fdr.values) <- dim(p.values)
+  dimnames(fdr.values) <- dimnames(p.values)
+  return(fdr.values)
+
+}
+```
+
+```{r}
+# Find differentially activated modules
+
+# Veh-LPS vs. veh-PBS 2d
+samples <- rownames(MEs)[grep("Veh-PBS-2d|Veh-LPS-1.0-2d", rownames(MEs))]
+fdr.veh.2d <- find_diff_activated_modules(samples = samples, MEs = MEs)
+
+# Sema-LPS vs. veh-LPS 2d
+samples <- rownames(MEs)[grep("Veh-LPS-1.0-2d|Sema-LPS-1.0-2d", rownames(MEs))]
+fdr.LPS.2d <- find_diff_activated_modules(samples = samples, MEs = MEs)
+
+# Veh-LPS vs. veh-PBS 11d
+samples <- rownames(MEs)[grep("Veh-PBS-11d|Veh-LPS-1.0-11d", rownames(MEs))]
+fdr.veh.11d <- find_diff_activated_modules(samples = samples, MEs = MEs)
+
+# Sema-LPS vs. veh-LPS 11d
+samples <- rownames(MEs)[grep("Sema-LPS-1.0-11d|Veh-LPS-1.0-11d", rownames(MEs))]
+fdr.LPS.11d <- find_diff_activated_modules(samples = samples, MEs = MEs)
+
+fdr.veh.2d[,order(fdr.veh.2d)]
+fdr.LPS.2d[,order(fdr.LPS.2d)]
+fdr.veh.11d[,order(fdr.veh.11d)]
+fdr.LPS.11d[,order(fdr.LPS.11d)]
+```
+
+```{r}
+# Plot M6 activity at day 2
+module.expr <- MEs[, which(colnames(MEs) == "M6"), drop=F]
+module.expr <- module.expr[grep("Veh-PBS-2d|Veh-LPS-1.0-2d|Sema-LPS-1.0-2d", rownames(module.expr)), , drop = F]
+drug <- gsub("-2d_.*", "", rownames(module.expr))
+module.expr$drug <- drug
+
+# Prepare data for plotting
+module.expr <- melt(module.expr, id.vars = "drug") 
+colnames(module.expr) <- c("drug", "module", "ME")
+module.expr$drug <- factor(module.expr$drug, levels = c("Veh-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+module.expr$title <- "Day 2: Hippocampus"
+
+p.adj <- c(fdr.veh.2d[which(colnames(fdr.veh.2d) == "M6")], fdr.LPS.2d[which(colnames(fdr.LPS.2d) == "M6")])
+p.symbol <- ifelse(p.adj <= 0.05, p.adj, "NS")
+asterisk.position <- max(module.expr$ME)
+
+# Plot
+pal <- c("#33CC66", "#336666", "#A60FA6")
+module.expr.2d.plot <- ggplot(module.expr, aes(x = drug, y = ME, fill = drug)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(0.6), width = 0.5, lwd = 0.3) +
+  theme_pubr() +
+  facet_wrap(~title, ncol = 1) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.title.y = element_text(size=6, face="bold"),
+        axis.title.x = element_blank(),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        legend.position = "none",
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        strip.text = element_text(size=6, face="bold")) +
+  scale_y_continuous(name = "Module activity", 
+                      breaks = seq(-1, 1, 0.2), limits = c(-0.15, 0.42)) +
+  scale_fill_manual(values = pal, guide = F) + 
+  geom_signif(y_position = asterisk.position + 0.05, xmin = c(1, 2.01), 
+             xmax = c(1.99, 3), tip_length = 0.01, 
+             fontface = "bold", 
+             annotation = c("'4x10'^-5", "NS"),
+             size = 0.2, textsize = 1.55, parse = T) 
+
+module.expr.2d.plot
+```
+  
+  
+```{r}
+# Plot M6 activity at day 11
+module.expr <- MEs[, which(colnames(MEs) == "M6"), drop=F]
+module.expr <- module.expr[grep("Veh-PBS-11d|Veh-LPS-1.0-11d|Sema-LPS-1.0-11d", rownames(module.expr)), , drop = F]
+drug <- gsub("-11d_.*", "", rownames(module.expr))
+module.expr$drug <- drug
+
+# Prepare data for plotting
+module.expr <- melt(module.expr, id.vars = "drug") 
+colnames(module.expr) <- c("drug", "module", "ME")
+module.expr$drug <- factor(module.expr$drug, levels = c("Veh-PBS", "Veh-LPS-1.0", "Sema-LPS-1.0"))
+module.expr$title <- "Day 11: Hippocampus"
+
+p.adj <- c(fdr.veh.11d[which(colnames(fdr.veh.11d) == "M6")], fdr.LPS.11d[which(colnames(fdr.LPS.11d) == "M6")])
+p.adj <- round(p.adj, digits = 3)
+p.symbol <- ifelse(p.adj <= 0.05, p.adj, "NS")
+asterisk.position <- max(module.expr$ME)
+
+# Plot
+pal <- c("#33CC66", "#336666", "#A60FA6")
+module.expr.11d.plot <- ggplot(module.expr, aes(x = drug, y = ME, fill = drug)) +
+  geom_boxplot(outlier.shape = NA,
+               position = position_dodge(0.6), width = 0.5, lwd = 0.3) +
+  theme_pubr() +
+  facet_wrap(~title, ncol = 1) +
+  theme(panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"),
+        axis.title.y = element_text(size=6, face="bold"),
+        axis.title.x = element_blank(),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+        legend.position = "none",
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        strip.text = element_text(size=6, face="bold")) +
+  scale_y_continuous(name = "Module activity", 
+                      breaks = seq(-1, 1, 0.2), limits = c(-0.15, 0.42)) +
+  scale_fill_manual(values = pal, guide = F) + 
+  geom_signif(y_position = asterisk.position + 0.05, xmin = c(1, 2.01), 
+             xmax = c(1.99, 3), tip_length = 0.01, 
+             fontface = "bold", 
+             annotation = p.symbol,
+             size = 0.2, textsize = 1.55, parse=T) 
+module.expr.11d.plot
+```
+
+
+# Figure 1c
+```{r}
+# Compute network kme values
+kme <- signedKME(as.matrix(expr.mat), MEs, 
+                outputColumnName = substr(colnames(MEs), 1, 2))
+
+module <- "M6"
+module.genes <- rownames(gene.assignment)[gene.assignment$module == module]
+kmes <- kme[module.genes, module]
+hub.genes <- module.genes[order(kmes, decreasing=T)]
+
+# # Identify top 5 GO terms
+# GO.analysis <- gost(query = hub.genes,
+#                     organism = "mmusculus",
+#                     ordered_query = T, correction_method = "fdr",
+#                     exclude_iea = T,
+#                     sources = c("GO:BP", "GO:MF", "GO:CC", "KEGG", "REAC"),
+#                     evcodes = T, significant = T)
+# 
+# GO.terms <- GO.analysis[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
+#   filter(term_size <= 500) %>% filter(intersection_size >= 3) %>%
+#   arrange(p_value) %>%top_n(5, -p_value) %>%
+#   mutate(x = fct_reorder(str_to_title(str_wrap(term_name, 20)), -p_value)) %>%
+#   mutate(y = -log10(p_value))
+# 
+# saveRDS(GO.terms, file = "/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_M6_GO_terms.rds")
+GO.terms <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_M6_GO_terms.rds")
+
+# Plot
+GO.plot <- ggplot(GO.terms, aes(x, y)) + 
+  geom_col(colour="black", width=0.8, fill="darkgrey", size=0.3, position = position_dodge(width=0.5)) +
+  theme_pubr(legend="none") + 
+  theme(axis.text.x = element_text(size=6, face="bold"),
+        axis.text.y = element_text(size=6, face="bold"),
+        axis.title.x = element_text(size=6, face="bold"),
+        axis.line = element_line(colour = "black", size = 0.4),
+        plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+  scale_size(range = c(5, 10)) +
+  coord_flip() +
+  xlab(NULL) + ylab(expression(paste(bold(-log[10]),bold("("),
+                                     bolditalic("P"),bold(")")))) +
+  scale_y_continuous(limits = c(0, 25))
+GO.plot
+```
+  
+# Combine all plots
+```{r}
+# Supplementary figure 1a
+plot1 <- plot_grid(IBA1.hippo.2d.plot + theme(plot.margin = unit(c(0, 0.2, 0, 0), "cm")), 
+                   IBA1.hippo.11d.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0.1), "cm")),
+                   IBA1.brain.2d.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0.1), "cm")), 
+                   IBA1.brain.11d.plot + theme(plot.margin = unit(c(0, 0, 0, 0.2), "cm")),
+                   ncol = 4, align = "h", axis = "tb",
+                   rel_widths = c(1, 1, 1, 1)) 
+
+plot2 <- plot_grid(module.expr.2d.plot + theme(plot.margin = unit(c(0, 0.2, 0, 0), "cm")), 
+                   module.expr.11d.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0.1), "cm")), 
+                   GO.plot + theme(plot.margin = unit(c(0, 0, 0, 0.2), "cm")),
+                   ncol = 3, align = "h", axis = "tb",
+                   rel_widths = c(1, 1, 1.5)) 
+
+# Margin: top, right, bottom, and left
+fig1 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")), 
+                  plot2 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")),
+                  ncol = 1, align = "v",
+                  rel_heights = c(1, 1)) 
+
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure1.png", fig1, height = 120, width = 183,
+       units = "mm")
+```
+  

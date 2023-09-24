@@ -1,0 +1,55 @@
+---
+title: "merge_DVC_glia_and_neurons"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_out
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+```
+
+```{r}
+DVC <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj.rds")
+
+DVC.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj_labels.rds")
+DVC.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj_labels.rds")
+
+DVC <-  subset(DVC, cells = which(colnames(DVC) %in% c(colnames(DVC.neurons), colnames(DVC.glia))))
+
+DVC$cell.type <- ""
+
+DVC$cell.type[which(colnames(DVC) %in% colnames(DVC.glia))] <- as.character(DVC.glia$cell.type[na.omit(match(colnames(DVC), colnames(DVC.glia)))])
+
+DVC$cell.type[which(colnames(DVC) %in% colnames(DVC.neurons))] <- as.character(DVC.neurons$cell.type[na.omit(match(colnames(DVC), colnames(DVC.neurons)))])
+  
+DVC$cell.type <- factor(DVC$cell.type, levels = c("Astrocytes", "Bcas1_oligodendrocytes",
+                                                  "C1ql1_oligodendrocytes", "Endothelial_cells",
+                                                  "Ependymal_cells", "Microglia", 
+                                                  "Mobp_oligodendrocytes", "Neutrophils",
+                                                  "Pericytes1", "Pericytes2",
+                                                  "Tanycytes", "VLMCs", 
+                                                  "Chat_cholinergic_neurons", "Dbh_noradrenergic_neurons",
+                                                  "Slc17a6_excitatory_neurons", "Slc32a1_inhibitory_neurons",
+                                                  "Th_dopaminergic_neurons", "Tph2_serotonergic_neurons"))   
+
+
+# PCA
+VariableFeatures(DVC[["SCT"]]) <- rownames(DVC[["SCT"]]@scale.data)
+DVC <- RunPCA(DVC, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC, ndims = 100)
+
+# UMAP
+DVC <- RunUMAP(DVC, dims = 1:30, n.neighbors = 50)
+
+DimPlot(DVC, group.by = "cell.type", shuffle = T)
+
+saveRDS(DVC,
+       file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj_labels.rds")
+```
+

@@ -1,0 +1,177 @@
+---
+title: "clustering_DVC_glia"
+author: "Mette Ludwig"
+date: "2022-10-14"
+output: workflowr::wflow_html
+editor_options:
+  chunk_output_type: inline
+---
+
+
+```{r}
+library(ggplot2)
+library(Seurat)
+library(openxlsx)
+library(ggpubr)
+library(ggrepel)
+```
+
+# Load data
+```{r}
+DVC <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_Seurat_obj.rds")
+```
+
+# Subset glia
+```{r}
+DVC.glia <- subset(DVC, SCT_snn_res.0.1 %in% c(0, 6, 8, 9, 10, 11, 12, 13, 16), invert = T)
+```
+
+# Normalize data
+```{r}
+# Normalize data
+DVC.glia <- SCTransform(DVC.glia, verbose = F, method = "qpoisson")
+```
+
+# Run PCA
+```{r}
+# PCA
+VariableFeatures(DVC.glia[["SCT"]]) <- rownames(DVC.glia[["SCT"]]@scale.data)
+DVC.glia <- RunPCA(DVC.glia, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC.glia, ndims = 100)
+```
+
+# Run UMAP
+```{r}
+DVC.glia <- RunUMAP(DVC.glia, dims = 1:30, n.neighbors = 50)
+```
+
+# Find clusters
+```{r}
+DVC.glia <- FindNeighbors(DVC.glia, dims = 1:30, k.param = 50, verbose = F)
+DVC.glia <- FindClusters(DVC.glia, resolution = 0.1, verbose = F)
+DVC.glia <- FindClusters(DVC.glia, resolution = 1, verbose = F)
+```
+
+# Remove bad quality cells
+```{r}
+source("/projects/mludwig/hippo_GLP1/code/flag_clusters.R")
+
+flagged.clusters1 <- flag.clusters(seurat.obj = DVC.glia,
+                                  genes = c("percent.mt", "Rbfox3"),
+                                  resolution = "SCT_snn_res.1", quantile = 0.95)
+
+
+flagged.clusters2 <- flag.clusters2(seurat.obj = DVC.glia,
+                                    resolution = "SCT_snn_res.1", fraction = 0.75)
+
+flagged.clusters <- unique(c(flagged.clusters1, flagged.clusters2))
+```
+
+```{r}
+# Remove cluster 23 which contains neuronal markers
+DVC.glia <- subset(DVC.glia, SCT_snn_res.1 == flagged.clusters, invert = T)
+```
+
+# Rerun PCA
+```{r}
+# PCA
+VariableFeatures(DVC.glia[["SCT"]]) <- rownames(DVC.glia[["SCT"]]@scale.data)
+DVC.glia <- RunPCA(DVC.glia, verbose = F, npcs = 100)
+
+# Select number of PCs
+ElbowPlot(DVC.glia, ndims = 100)
+```
+
+# Rerun UMAP
+```{r}
+# UMAP
+DVC.glia <- RunUMAP(DVC.glia, dims = 1:30, n.neighbors = 50)
+
+DimPlot(DVC.glia, group.by = "run", shuffle = T)
+```
+
+# Rerun clustering
+```{r}
+DVC.glia <- FindNeighbors(DVC.glia, dims = 1:30, k.param = 50, verbose = F)
+DVC.glia <- FindClusters(DVC.glia, resolution = 0.1, verbose = F)
+DVC.glia <- FindClusters(DVC.glia, resolution = 1, verbose = F)
+```
+
+# Transfer labels from DVC and hippocampal atlases
+```{r}
+ludwig <- readRDS("/projects/mludwig/DVC/output/Seurat_objs/integrated/new_glia_Seurat_obj.rds")
+
+anchors <- FindTransferAnchors(reference = ludwig, query = DVC.glia, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = ludwig$cell.type, 
+    dims = 1:30)
+
+DVC.glia$ludwig.cell.type.predictions <- predictions$predicted.id
+DVC.glia$ludwig.cell.type.score <- predictions$prediction.score.max
+
+hippo.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_glia_Seurat_obj_labels.rds")
+
+anchors <- FindTransferAnchors(reference = hippo.glia, query = DVC.glia, 
+    dims = 1:30, normalization.method = "SCT")
+predictions <- TransferData(anchorset = anchors, refdata = hippo.glia$cell.type2, 
+    dims = 1:30)
+
+DVC.glia$hippo.cell.type.predictions <- predictions$predicted.id
+DVC.glia$hippo.cell.type.score <- predictions$prediction.score.max
+
+```
+
+# Save
+```{r}
+DVC.glia@meta.data <- DVC.glia@meta.data[, c("nCount_RNA", "nFeature_RNA",
+                                             "nCount_SCT", "nFeature_SCT",
+                                             "percent.mt", "pool",
+                                             "hash.ID", "treatment",
+                                             "drug", "time", "run",
+                                             "SCT_snn_res.0.1", "SCT_snn_res.1",
+                                             "ludwig.cell.type.predictions",
+                                             "ludwig.cell.type.score",
+                                             "hippo.cell.type.predictions",
+                                             "hippo.cell.type.score")]
+# saveRDS(DVC.glia,
+#        file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj.rds")
+```
+
+# Save with cell type labels 
+```{r}
+DVC.glia$cell.type <- ""
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 %in% c(0, 2, 3, 7))] <- "Mobp_oligodendrocytes"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 1)] <- "Astrocytes"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 5)] <- "Microglia"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 9)] <- "Neutrophils"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 4)] <- "Endothelial_cells"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 4 &
+                           DVC.glia$SCT_snn_res.1 == 27)] <- "Pericytes2"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 10)] <- "VLMCs"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 4 &
+                           DVC.glia$SCT_snn_res.1 == 18)] <- "Pericytes1"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 6 &
+                              DVC.glia$SCT_snn_res.1 != 19)] <- "C1ql1_oligodendrocytes"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 6 &
+                              DVC.glia$SCT_snn_res.1 == 19)] <- "Bcas1_oligodendrocytes"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 8 &
+                              DVC.glia$SCT_snn_res.1 == 26)] <- "Tanycytes"
+DVC.glia$cell.type[which(DVC.glia$SCT_snn_res.0.1 == 8 &
+                           DVC.glia$SCT_snn_res.1 == 22 |
+                           DVC.glia$SCT_snn_res.0.1 == 11)] <- "Ependymal_cells"
+
+DVC.glia$cell.type <- factor(DVC.glia$cell.type, levels = c("Astrocytes", "Bcas1_oligodendrocytes",
+                                                            "C1ql1_oligodendrocytes", "Endothelial_cells",
+                                                            "Ependymal_cells", "Microglia",
+                                                            "Mobp_oligodendrocytes", "Neutrophils",
+                                                            "Pericytes1", "Pericytes2",
+                                                            "Tanycytes", "VLMCs"))
+
+DimPlot(DVC.glia, group.by = "cell.type", label = T)
+
+# saveRDS(DVC.glia,
+#        file = "/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Seurat_obj_labels.rds")
+```
+
