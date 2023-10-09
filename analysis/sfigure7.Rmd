@@ -761,7 +761,7 @@ sfig7 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")),
                     rel_heights = c(1, 1))
 
 
-ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure7_updated.png", sfig7, height = 120, width = 183,
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure7.png", sfig7, height = 120, width = 183,
        units = "mm")
 
 ```

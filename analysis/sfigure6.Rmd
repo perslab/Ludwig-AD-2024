@@ -23,205 +23,249 @@ DVC.glia <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_glia_Se
 DVC.neurons <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/DVC_neurons_Seurat_obj_labels.rds")
 ```
 
-# Supplementary figure 6a
+
+# UMAP of DVC glial cells colored by run
 ```{r}
-pal <- c("#E8EE9B", "#B0B4C1", "#7FC97F", "#4E7CAD", "#96BF9E", "#DA2950", 
-         "#666666", "#E1B8A8", "#B2258F", "#AB5D28", "#C4AFCB", "#FDD58C")
+set.seed(1)
 
-glia.markers.vector <- c("Gfap", "Bcas1", "C1ql1", "Slc2a1", "Ccdc153", "Aif1", "Mobp", "S100a9", "Kcnj8", "Wt1", "Col1a1")
+umap.embed.glia <- as.data.frame(DVC.glia@reductions$umap@cell.embeddings)
+umap.embed.glia$run <- DVC.glia$run
+umap.embed.glia$run <- gsub("DVC", "Batch ", umap.embed.glia$run)
+umap.embed.glia <- umap.embed.glia[sample(seq(1, nrow(umap.embed.glia))),]
 
-
-for (i in 1:length(glia.markers.vector)) {
-
-  gene <- glia.markers.vector[i]
-  gene.expr <- data.frame(expression = DVC.glia@assays$SCT@data[gene,], 
-                          cell.type = DVC.glia$cell.type)
-
-  if (i < length(glia.markers.vector)) {
-    
-    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, 
-                                      fill = cell.type)) + 
-      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
-      theme_pubr() +
-      theme(panel.grid.major = element_blank(), 
-            panel.grid.minor = element_blank(),
-            panel.background = element_blank(), 
-            axis.line = element_line(colour = "black", size = 0.4),
-            axis.text.y = element_text(size=6, face="bold"),
-            axis.text.x = element_blank(),
-            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
-                                         margin=unit(c(0,0,0,0), "cm")),
-            axis.ticks.x = element_blank(),
-            # margin: top, right, bottom, and left
-            plot.margin=unit(c(0.1,0,-.5,0), "cm")) +
-      xlab("") + ylab(gene) + 
-      scale_fill_manual(values = pal) + 
-      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
-  }
-  
-  else {
-    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
-      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
-      theme_pubr() +
-      theme(panel.grid.major = element_blank(), 
-            panel.grid.minor = element_blank(),
-            panel.background = element_blank(), 
-            axis.line = element_line(colour = "black", size = 0.4),
-            axis.text.y = element_text(size=6, face="bold"),
-            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
-            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
-                                         margin=unit(c(0,0,0,0), "cm")),
-            # margin: top, right, bottom, and left
-            plot.margin=unit(c(0.1,0,-.5,0), "cm")) +
-      xlab("") + ylab(gene) + 
-      scale_fill_manual(values = pal) + 
-      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
-    
-  }
-    assign(paste0("violin.plot", i), violin.plot)
-}
-
-# Combine plots
-glia.marker.plot <- plot_grid(violin.plot1, violin.plot2, violin.plot3,
-                              violin.plot4, violin.plot5, violin.plot6,
-                              violin.plot7, violin.plot8, violin.plot9,
-                              violin.plot10, violin.plot11,
-          align = "v", ncol = 1, rel_heights = c(rep(0.8,10), 2.5))
-glia.marker.plot
-# ggsave(plot = glia.marker.plot, filename = "/projects/mludwig/hippo_GLP1/delete.png",
-#         height = 4.72, width = 3.2)
+# Plot
+run.umap.glia.plot <- ggplot(data = umap.embed.glia, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = run)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") +
+  guides(colour = guide_legend(override.aes = list(size=1))) +
+  scale_color_manual(values = c("#9AF59A", "#7FC97F", "#4C784C", "#273D27", 
+                                "grey75", "grey50", "grey25", "grey0")) 
+run.umap.glia.plot
 ```
 
-# Supplementary figure 6b
+
+# UMAP of DVC neurons colored by run
 ```{r}
-pal <- c("#DA2950", "#7FC97F", "#AB5D28", "#4E7CAD", "#B2258F", "#B0B4C1")
+set.seed(1)
 
-neuron.markers.vector <- c("Chat", "Dbh", "Slc17a6", "Slc32a1", "Th", "Tph2")
+umap.embed.neurons <- as.data.frame(DVC.neurons@reductions$umap@cell.embeddings)
+umap.embed.neurons$run <- DVC.neurons$run
+umap.embed.neurons$run <- gsub("DVC", "Batch ", umap.embed.neurons$run)
+umap.embed.neurons <- umap.embed.neurons[sample(seq(1, nrow(umap.embed.neurons))),]
 
-for (i in 1:length(neuron.markers.vector)) {
-
-  gene <- neuron.markers.vector[i]
-  gene.expr <- data.frame(expression = DVC.neurons@assays$SCT@data[gene,], 
-                          cell.type = DVC.neurons$cell.type)
-
-  if (i < length(neuron.markers.vector)) {
-    
-    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, 
-                                      fill = cell.type)) + 
-      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
-      theme_pubr() +
-      theme(panel.grid.major = element_blank(), 
-            panel.grid.minor = element_blank(),
-            panel.background = element_blank(), 
-            axis.line = element_line(colour = "black", size = 0.4),
-            axis.text.y = element_text(size=6, face="bold"),
-            axis.text.x = element_blank(),
-            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
-                                         margin=unit(c(0,0,0,0), "cm")),
-            axis.ticks.x = element_blank(),
-            # margin: top, right, bottom, and left
-            plot.margin=unit(c(0.1,0,-.5,0.5), "cm")) +
-      xlab("") + ylab(gene) + 
-      scale_fill_manual(values = pal) + 
-      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
-  }
-  
-  else {
-    violin.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
-      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
-      theme_pubr() +
-      theme(panel.grid.major = element_blank(), 
-            panel.grid.minor = element_blank(),
-            panel.background = element_blank(), 
-            axis.line = element_line(colour = "black", size = 0.4),
-            axis.text.y = element_text(size=6, face="bold"),
-            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
-            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
-                                         margin=unit(c(0,0,0,0), "cm")),
-            # margin: top, right, bottom, and left
-            plot.margin=unit(c(0.1,0,-.5,0.5), "cm")) +
-      xlab("") + ylab(gene) + 
-      scale_fill_manual(values = pal) + 
-      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
-    
-  }
-    assign(paste0("violin.plot", i), violin.plot)
-}
-
-# Combine plots
-neuron.marker.plot <- plot_grid(violin.plot1, violin.plot2, violin.plot3,
-                                violin.plot4, violin.plot5, violin.plot6, 
-          align = "v", ncol = 1, rel_heights = c(rep(0.8, 5), 2.9))
-
-neuron.marker.plot
-# ggsave(plot = neuron.marker.plot, filename = "/projects/mludwig/hippo_GLP1/delete.png",
-#         height = 2.8, width = 2.8)
+# Plot
+run.umap.neurons.plot <- ggplot(data = umap.embed.neurons, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = run)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  guides(colour = guide_legend(override.aes = list(size=1))) +
+  scale_color_manual(values = c("#9AF59A", "#7FC97F", "#4C784C", "#273D27", 
+                                "grey75", "grey50", "grey25", "grey0")) 
+run.umap.neurons.plot
 ```
 
-# Supplementary figure 6c
+
+# UMAP of DVC glial cells colored by drug
 ```{r}
-pal.glia <- c("#E8EE9B", "#B0B4C1", "#7FC97F", "#4E7CAD", "#96BF9E", "#DA2950", 
-              "#666666", "#E1B8A8", "#B2258F", "#AB5D28", "#C4AFCB", "#FDD58C")
+set.seed(1)
 
-pal.neurons <-  c("#DA2950", "#7FC97F", "#AB5D28", "#4E7CAD", "#B2258F", "#B0B4C1")
+umap.embed.glia <- as.data.frame(DVC.glia@reductions$umap@cell.embeddings)
+umap.embed.glia$drug <- DVC.glia$drug
+umap.embed.glia$drug <- factor(umap.embed.glia$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS"))
+umap.embed.glia <- umap.embed.glia[sample(seq(1, nrow(umap.embed.glia))),]
 
-pal <- c(pal.glia, pal.neurons)                         
+# Plot
+drug.umap.glia.plot <- ggplot(data = umap.embed.glia, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = drug)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = c("#33CC66", "#336666", "#a60fa6")) +
+  guides(colour = guide_legend(override.aes = list(size=1)))
 
-# Plot 
-gene <- "Glp1r"
-gene.expr <- rbind(data.frame(expression = DVC.neurons@assays$SCT@data[gene,], 
-                              cell.type = DVC.neurons$cell.type), 
-                   data.frame(expression = DVC.glia@assays$SCT@data[gene,], 
-                              cell.type = DVC.glia$cell.type))
-gene.expr$cell.type <- factor(gene.expr$cell.type, levels = c(levels(DVC.glia$cell.type), 
-                                                              sort(unique(DVC.neurons$cell.type))))                
+drug.umap.glia.plot
+```
 
-Glp1r.expr.plot <- ggplot(gene.expr, aes(x=factor(cell.type), y=expression, fill = cell.type)) + 
-      geom_violin(scale = "width", adjust = 2, show.legend = F, size = 0.2) +
-      theme_pubr() +
-      theme(panel.grid.major = element_blank(), 
-            panel.grid.minor = element_blank(),
-            panel.background = element_blank(), 
-            axis.line = element_line(colour = "black", size = 0.4),
-            axis.text.y = element_text(size=6, face="bold"),
-            axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
-            axis.title.y = element_text(size=6, face="bold.italic", angle = 360, vjust = 0.5,
-                                         margin=unit(c(0,0,0,0), "cm")),
-            # margin: top, right, bottom, and left
-            plot.margin=unit(c(0.1,0,-.5,0.2), "cm")) +
-      xlab("") + ylab(gene) + 
-      scale_fill_manual(values = pal) + 
-      scale_y_continuous(breaks = c(0, floor(max(gene.expr$expression))))
-    
-Glp1r.expr.plot
-# ggsave(plot = Glp1r.expr.plot, filename = "/projects/mludwig/hippo_GLP1/delete.png",
-#         height = 1.5, width = 4)
+
+# UMAP of DVC neurons colored by drug
+```{r}
+set.seed(1)
+
+umap.embed.neurons <- as.data.frame(DVC.neurons@reductions$umap@cell.embeddings)
+umap.embed.neurons$drug <- DVC.neurons$drug
+umap.embed.neurons$drug <- factor(umap.embed.neurons$drug, levels = c("Veh-PBS", "Veh-LPS", "Sema-LPS"))
+umap.embed.neurons <- umap.embed.neurons[sample(seq(1, nrow(umap.embed.neurons))),]
+
+# Plot
+drug.umap.neurons.plot <- ggplot(data = umap.embed.neurons, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = drug)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = c("#33CC66", "#336666", "#a60fa6")) +
+  guides(colour = guide_legend(override.aes = list(size=1)))
+
+drug.umap.neurons.plot
+```
+
+
+# UMAP of DVC glial cells colored by time
+```{r}
+set.seed(1)
+
+umap.embed.glia <- as.data.frame(DVC.glia@reductions$umap@cell.embeddings)
+umap.embed.glia$time <- DVC.glia$time
+umap.embed.glia <- umap.embed.glia[sample(seq(1, nrow(umap.embed.glia))),]
+
+# Plot
+time.umap.glia.plot <- ggplot(data = umap.embed.glia, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = time)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = c("#FF6F00", "#8A4198", "#ADE2D0", "#1A5354")) +
+  guides(colour = guide_legend(override.aes = list(size=1)))
+
+time.umap.glia.plot
+```
+
+
+# UMAP of DVC neurons colored by time
+```{r}
+set.seed(1)
+
+umap.embed.neurons <- as.data.frame(DVC.neurons@reductions$umap@cell.embeddings)
+umap.embed.neurons$time <- DVC.neurons$time
+umap.embed.neurons <- umap.embed.neurons[sample(seq(1, nrow(umap.embed.neurons))),]
+
+# Plot
+time.umap.neurons.plot <- ggplot(data = umap.embed.neurons, mapping = aes(x = UMAP_1, y = UMAP_2, 
+                                                           colour = time)) +
+  geom_point(size = 0.1, alpha = 0.5) +
+  theme_pubr() +
+  theme(axis.line = element_line(colour = "black", size = 0.4), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        panel.border = element_blank(), 
+        panel.background = element_blank(), 
+        axis.title = element_text(size=6, face="bold"),
+        axis.text = element_text(size=6, face="bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6, face="bold"),
+        # margin: top, right, bottom, and left
+        legend.margin=margin(0, 0, 0, 0),
+        legend.box.margin=margin(0, 0, 0, 0),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"),
+        legend.key.height = unit(0.1, "cm"),
+        legend.key.width = unit(0.2, "cm")) + 
+  xlab("UMAP 1") + ylab("UMAP 2") + 
+  scale_color_manual(values = c("#FF6F00", "#8A4198", "#ADE2D0", "#1A5354")) +
+  guides(colour = guide_legend(override.aes = list(size=1)))
+
+time.umap.neurons.plot
 ```
 
 
 # Combine all plots
 ```{r}
-blank.plot <- ggplot() + geom_blank(aes(0.1,0.1)) + 
-  cowplot::theme_nothing()
+plot1 <- plot_grid(run.umap.glia.plot, run.umap.neurons.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
 
+plot2 <- plot_grid(drug.umap.glia.plot, drug.umap.neurons.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
 
-plot1 <- plot_grid(blank.plot, neuron.marker.plot, blank.plot,
-                   ncol = 1, align = "v",                   
-                   rel_heights = c(0.2, 0.8, 0.2)) 
-
-plot2 <- plot_grid(blank.plot, Glp1r.expr.plot, blank.plot,
-                   ncol = 1, align = "v",                   
-                   rel_heights = c(0.4, 0.35, 0.4))
+plot3 <- plot_grid(time.umap.glia.plot, time.umap.neurons.plot,
+                   ncol = 2, align = "h", axis = "t",
+                   rel_widths = c(1, 1)) 
 
 # Margin: top, right, bottom, and left
-sfig6 <- plot_grid(glia.marker.plot + theme(plot.margin = unit(c(0, 0.4, 0, 0.1), "cm")), 
-                   plot1 + theme(plot.margin = unit(c(0.2, 0, 0.2, 0), "cm")), 
-                   plot2 + theme(plot.margin = unit(c(0, 0, 0, 0.4), "cm")),
-                   ncol = 3, align = "h",                   
-                   rel_widths = c(1, 0.8, 1.5))
+sfig6 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")), 
+                   plot2 + theme(plot.margin = unit(c(0.1, 0, 0.1, 0), "cm")), 
+                   plot3 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")), 
+                   ncol = 1, align = "v",
+                   rel_heights = c(1, 1, 1)) 
 
-
-ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure6.png", sfig6, height = 120, width = 183,
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/sfigure6.png", sfig6, height = 160, width = 130,
        units = "mm")
-
 ```
+
