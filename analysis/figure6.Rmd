@@ -79,7 +79,8 @@ TNFa.plot <- ggplot(TNFa.summary, aes(x = treatment, y = mean, fill = treatment)
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -154,7 +155,8 @@ INFg.plot <- ggplot(INFg.summary, aes(x = treatment, y = mean, fill = treatment)
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -218,7 +220,7 @@ IL1b.summary$SEM <- aggregate(IL1b[, c("IL1b"), drop = F],
 IL1b.summary$title <- paste0("IL-1", "\u03b2")
 
 # Plot
-pal <- rep(c("#33CC66", "#336666", "#A60FA6"), 2)
+pal <- c("#33CC66", "#336666", "#A60FA6", "#336666", "#A60FA6")
 IL1b.plot <- ggplot(IL1b.summary, aes(x = treatment, y = mean, fill = treatment)) +
   facet_wrap(~title, ncol = 1) +
   geom_bar(stat = "identity", position="dodge", color = "black", width = 0.7, size = 0.3) +
@@ -230,7 +232,8 @@ IL1b.plot <- ggplot(IL1b.summary, aes(x = treatment, y = mean, fill = treatment)
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -305,7 +308,8 @@ IL5.plot <- ggplot(IL5.summary, aes(x = treatment, y = mean, fill = treatment)) 
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -381,7 +385,8 @@ IL6.plot <- ggplot(IL6.summary, aes(x = treatment, y = mean, fill = treatment)) 
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -456,7 +461,8 @@ CXCL1.plot <- ggplot(CXCL1.summary, aes(x = treatment, y = mean, fill = treatmen
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -531,7 +537,8 @@ IL10.plot <- ggplot(IL10.summary, aes(x = treatment, y = mean, fill = treatment)
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -557,7 +564,7 @@ IL10.plot
 fig6 <- plot_grid(TNFa.plot, INFg.plot, IL1b.plot, IL5.plot, 
                    IL6.plot, CXCL1.plot, IL10.plot,
                    ncol = 7, align = "h", axis = "tb",                   
-                   rel_widths = c(1, 1, 1, 1, 1, 1, 1)) 
+                   rel_widths = c(1.1, 1, 0.85, 1, 1.15, 1.15, 1.1)) 
 
 
 ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure6.png", fig6, height = 60, width = 183,

@@ -57,7 +57,8 @@ umap.glia.plot <- ggplot(data = umap.embed.glia, mapping = aes(x = UMAP_1, y = U
                                                            colour = cell.type)) +
   geom_point(size = 0.1, alpha = 0.5) +
   theme_pubr() +
-  theme(axis.line = element_line(colour = "black", size = 0.4), 
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
         panel.border = element_blank(), 
@@ -92,7 +93,8 @@ umap.neurons.plot <- ggplot(data = umap.embed.neurons, mapping = aes(x = UMAP_1,
                                                            colour = cell.type)) +
   geom_point(size = 0.1, alpha = 0.5) +
   theme_pubr() +
-  theme(axis.line = element_line(colour = "black", size = 0.4), 
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
         panel.border = element_blank(), 
@@ -128,7 +130,8 @@ milo.umap.glia.plot <- plotNhoodGraphDA(hippo.glia.veh.milo, da.results.glia.veh
                               res_column = "logFC", size=2) +
   theme_pubr() +
   guides(size="none", edge_width="none", fill = guide_legend(title="Log fold-change")) +
-  theme(axis.line = element_line(colour = "black", size = 0.4), 
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
         panel.border = element_blank(), 
@@ -270,7 +273,9 @@ da.neighborhoods[order(da.neighborhoods$percent, decreasing = T),]
 DA.neighborhood.plot <- ggplot(da.neighborhoods, aes(x = cell.type, y = percent, fill = comparison)) +
   geom_bar(position = position_dodge(), stat="identity", colour="black", width=0.8, size=0.3) +
   theme_pubr(legend = "top") +
-  theme(axis.text.y = element_text(size=6, face="bold"),
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
+        axis.text.y = element_text(size=6, face="bold"),
         axis.title = element_text(size=6, face="bold"),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         legend.text = element_text(size=6, face="bold"),
@@ -354,7 +359,9 @@ neutrophil.prop.plot <- ggplot(prop.data, aes(x = time, y = prop, fill = drug)) 
   geom_boxplot(notch = F, size = 0.3, outlier.shape = NA,
            position = position_dodge(0.6), width = 0.5) +
   theme_pubr() +
-  theme(axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
+        axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title = element_text(size=6, face="bold"),
         legend.text = element_text(size=6, face="bold"),

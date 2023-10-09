@@ -55,7 +55,6 @@ IHC$IBA1_percent_brain <- as.numeric(IHC$IBA1_percent_brain)
 IHC$IBA1_percent_hippo <- as.numeric(IHC$IBA1_percent_hippo)
 ```
 
-
 ```{r}
 # Compute statistics for IBA1 percent in the hippocampus 
 IBA1.hippo <- IHC[which(IHC$drug %in% c("Veh-LPS-1.0", "Sema-LPS-1.0")), 
@@ -106,7 +105,8 @@ IBA1.hippo.2d.plot <- ggplot(IBA1.hippo.2d.summary, aes(x = drug, y = mean, fill
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -155,7 +155,8 @@ IBA1.hippo.11d.plot <- ggplot(IBA1.hippo.11d.summary, aes(x = drug, y = mean, fi
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -225,7 +226,8 @@ IBA1.brain.2d.plot <- ggplot(IBA1.brain.2d.summary, aes(x = drug, y = mean, fill
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -273,7 +275,8 @@ IBA1.brain.11d.plot <- ggplot(IBA1.brain.11d.summary, aes(x = drug, y = mean, fi
   theme_pubr() + 
   theme(panel.border = element_blank(), panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
@@ -389,7 +392,8 @@ module.expr.2d.plot <- ggplot(module.expr, aes(x = drug, y = ME, fill = drug)) +
   theme(panel.border = element_blank(), 
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black"),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.title.y = element_text(size=6, face="bold"),
         axis.title.x = element_blank(),
         axis.text.y = element_text(size=6, face="bold"),
@@ -438,7 +442,8 @@ module.expr.11d.plot <- ggplot(module.expr, aes(x = drug, y = ME, fill = drug)) 
   theme(panel.border = element_blank(), 
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(), 
-        axis.line = element_line(colour = "black"),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         axis.title.y = element_text(size=6, face="bold"),
         axis.title.x = element_blank(),
         axis.text.y = element_text(size=6, face="bold"),
@@ -469,7 +474,7 @@ module.genes <- rownames(gene.assignment)[gene.assignment$module == module]
 kmes <- kme[module.genes, module]
 hub.genes <- module.genes[order(kmes, decreasing=T)]
 
-# # Identify top 5 GO terms
+# # Identify top  GO terms
 # GO.analysis <- gost(query = hub.genes,
 #                     organism = "mmusculus",
 #                     ordered_query = T, correction_method = "fdr",
@@ -478,8 +483,8 @@ hub.genes <- module.genes[order(kmes, decreasing=T)]
 #                     evcodes = T, significant = T)
 # 
 # GO.terms <- GO.analysis[[1]] %>% select(term_name, term_size, p_value, intersection_size, intersection) %>%
-#   filter(term_size <= 500) %>% filter(intersection_size >= 3) %>%
-#   arrange(p_value) %>%top_n(5, -p_value) %>%
+#   filter(term_size <= 500) %>% filter(intersection_size >= 3) %>% filter(nchar(term_name) <= 100) %>%
+#   arrange(p_value) %>% top_n(100, -p_value) %>%
 #   mutate(x = fct_reorder(str_to_title(str_wrap(term_name, 20)), -p_value)) %>%
 #   mutate(y = -log10(p_value))
 # 
@@ -487,13 +492,14 @@ hub.genes <- module.genes[order(kmes, decreasing=T)]
 GO.terms <- readRDS("/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_M6_GO_terms.rds")
 
 # Plot
-GO.plot <- ggplot(GO.terms, aes(x, y)) + 
+GO.plot <- ggplot(GO.terms[1:5,], aes(x, y)) + 
   geom_col(colour="black", width=0.8, fill="darkgrey", size=0.3, position = position_dodge(width=0.5)) +
   theme_pubr(legend="none") + 
   theme(axis.text.x = element_text(size=6, face="bold"),
         axis.text.y = element_text(size=6, face="bold"),
         axis.title.x = element_text(size=6, face="bold"),
-        axis.line = element_line(colour = "black", size = 0.4),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         plot.margin = unit(c(0, 0, 0, 0), "cm")) +
   scale_size(range = c(5, 10)) +
   coord_flip() +
@@ -529,3 +535,17 @@ ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure1.png", fig1, height =
        units = "mm")
 ```
   
+# Save module M6 genes and associated GO terms
+```{r}
+M6.list <- vector(length = 2, mode = "list")
+names(M6.list) <- c("M6_genes", "M6_GO_terms")
+M6.list[["M6_genes"]] <- data.frame(Gene = hub.genes, kME = kmes[order(kmes, decreasing=T)])
+
+M6.list[["M6_functional_terms"]] <- GO.terms[, c("term_name", "p_value", "term_size", 
+                                                 "intersection_size", "intersection")]
+colnames(M6.list[["M6_functional_terms"]]) <- c("Term", "FDR", "Term_size", 
+                                                "Intersection_size", "Intersection")
+
+write.xlsx(M6.list, file = "/projects/mludwig/hippo_GLP1/output/WGCNA/WGCNA_M6_table.xlsx", row.names = F)
+```
+

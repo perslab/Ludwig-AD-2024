@@ -27,7 +27,7 @@ registerDoMC(20)
 hippo <- readRDS("/projects/mludwig/hippo_GLP1/output/Seurat_objs/hippo_Seurat_obj_labels.rds")
 ```
 
-# Figure 4b
+# Figure 4a
 ```{r}
 # Read AD GWAS enrichment scores
 AD.scDRS <- read.table(gzfile("/projects/mludwig/hippo_GLP1/output/scDRS/AD.score.gz"))
@@ -60,6 +60,7 @@ AD.enrichment.plot <- ggplot(gene.set.expr, aes(x = cell.type, y = expression, f
             panel.grid.minor = element_blank(),
             panel.background = element_blank(), 
             axis.line = element_line(colour = "black", size = 0.3),
+            axis.ticks = element_line(colour = "black", size = 0.3),
             axis.text.y = element_text(size=6, face="bold"),
             axis.text.x = element_text(size=6, face="bold", angle = 45, hjust = 1),
             axis.title.y = element_text(size=6, face="bold", margin=unit(c(0,0,0,0), "cm")),
@@ -80,7 +81,7 @@ AD.enrichment.plot <- ggplot(gene.set.expr, aes(x = cell.type, y = expression, f
 AD.enrichment.plot
 ```
 
-# Figure 4c
+# Figure 4b
 ```{r}
 # Compute statistics for Veh-LPS and Veh-PBS
 groups <- c("Veh-LPS", "Veh-PBS")
@@ -208,8 +209,9 @@ lmer.AD.plot <- ggplot(lmer.AD, aes(x = cell.type, y = beta, color = comparison)
   geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
   facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_AD ) +
   theme_pubr() +
-  theme(axis.title.y = element_text(size=6, face="bold",
-                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
+        axis.title.y = element_text(size=6, face="bold"),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         legend.text = element_text(size=6, face="bold"),
@@ -235,7 +237,7 @@ lmer.AD.plot
 ```
 
 
-# Figure 4d
+# Figure 4c
 ```{r}
 ### Identify AD-associated genes and map to mouse gene symbols ###
 # Load Entrez-ID-to-gene-symbol mapping data
@@ -421,26 +423,6 @@ GAM.endothelial.cells.LPS$cell.type <- "Endothelial_cells"
 colnames(GAM.endothelial.cells.veh) <- colnames(GAM.endothelial.cells.LPS) <- 
   c("gene", "beta", "p", "rank", "p.adj", "comparison", "cell.type")
 
-# genes <- AD.genes[1:40]
-# GAM.microglia.veh <- GAM.microglia.veh[which(GAM.microglia.veh$gene %in% genes),]
-# GAM.microglia.veh$p.adj <- p.adjust(GAM.microglia.veh$p, method = "fdr")
-# 
-# GAM.microglia.LPS <- GAM.microglia.LPS[which(GAM.microglia.LPS$gene %in% genes),]
-# GAM.microglia.LPS$p.adj <- p.adjust(GAM.microglia.LPS$p, method = "fdr")
-# 
-# GAM.pericytes1.veh <- GAM.pericytes1.veh[which(GAM.pericytes1.veh$gene %in% genes),]
-# GAM.pericytes1.veh$p.adj <- p.adjust(GAM.pericytes1.veh$p, method = "fdr")
-# 
-# GAM.pericytes1.LPS <- GAM.pericytes1.LPS[which(GAM.pericytes1.LPS$gene %in% genes),]
-# GAM.pericytes1.LPS$p.adj <- p.adjust(GAM.pericytes1.LPS$p, method = "fdr")
-# 
-# GAM.endothelial.cells.veh <- GAM.endothelial.cells.veh[which(GAM.endothelial.cells.veh$gene %in% genes),]
-# GAM.endothelial.cells.veh$p.adj <- p.adjust(GAM.endothelial.cells.veh$p, method = "fdr")
-# 
-# GAM.endothelial.cells.LPS <- GAM.endothelial.cells.LPS[which(GAM.endothelial.cells.LPS$gene %in% genes),]
-# GAM.endothelial.cells.LPS$p.adj <- p.adjust(GAM.endothelial.cells.LPS$p, method = "fdr")
-
-
 GAM.data <- rbind(GAM.microglia.veh, GAM.microglia.LPS, 
                   GAM.pericytes1.veh, GAM.pericytes1.LPS,
                   GAM.endothelial.cells.veh, GAM.endothelial.cells.LPS)
@@ -467,13 +449,14 @@ AD.genes.plot <- ggplot(GAM.data, aes(x = gene, y = comparison)) +
              limits = c(0, max(GAM.data$size))) +
    scale_color_gradient2(low = "midnightblue", mid = "white", high = "aquamarine4",
                          breaks = c(seq(-3, 3, 1.5)), limits = c(-3.37, 3.37),
-                         name = expression(bold(paste(beta))))  +
+                         name = paste0("\u03b2"))  +
   theme_pubr(legend = "top") + xlab(NULL) + ylab(NULL) + 
-  theme(axis.text.x = element_text(size=4, face="bold", angle=45, hjust = 1), 
+  theme(axis.text.x = element_text(size=6, face="bold", angle=45, hjust = 1), 
         axis.text.y = element_text(size=6, face="bold"),
         legend.title = element_text(size=6, face="bold"), 
         legend.text = element_text(size=6, face="bold"),
-        axis.line = element_line(colour = "black"),
+        axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
         # margin: top, right, bottom, and left
         plot.margin = unit(c(0, 0, 0, 1), "cm"),
         legend.margin=margin(0, 0, 0, 0),
@@ -485,7 +468,7 @@ AD.genes.plot
 ```
 
 
-# Figure 4f
+# Figure 4d
 ```{r}
 # Load Neff module scores
 module.scores.neff <- readRDS("/projects/mludwig/hippo_GLP1/data/2021_Neff/hippo_module_scores_Neff_classes.rds")
@@ -640,8 +623,9 @@ lmer.neff.up.plot <- ggplot(lmer.neff.up, aes(x = cell.type, y = beta, color = c
   geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
   facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_up) +
   theme_pubr() +
-  theme(axis.title.y = element_text(size=6, face="bold",
-                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
+        axis.title.y = element_text(size=6, face="bold"),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         legend.text = element_text(size=6, face="bold"),
@@ -703,8 +687,9 @@ lmer.neff.down.plot <- ggplot(lmer.neff.down, aes(x = cell.type, y = beta, color
   geom_errorbar(aes(ymin=beta-SE, ymax=beta+SE), width=0.1, position = position_dodge(0.4)) +
   facet_wrap(~pathway, ncol = 1, labeller = variable_labeller_down) +
   theme_pubr() +
-  theme(axis.title.y = element_text(size=6, face="bold",
-                                    margin=unit(c(0, -0.1, 0, 0), "cm")),
+  theme(axis.line = element_line(colour = "black", size = 0.3),
+        axis.ticks = element_line(colour = "black", size = 0.3),
+        axis.title.y = element_text(size=6, face="bold"),
         axis.text.x = element_text(size=6, face="bold", angle=45, hjust=1),
         axis.text.y = element_text(size=6, face="bold"),
         legend.text = element_text(size=6, face="bold"),
@@ -737,41 +722,41 @@ blank.plot <- ggplot() + geom_blank(aes(0.1, 0.1)) +
   cowplot::theme_nothing()
 
 
-plot1 <- plot_grid(blank.plot, AD.enrichment.plot,
+plot1 <- plot_grid(get_legend(AD.enrichment.plot), get_legend(lmer.AD.plot),
+                   ncol = 2, align = "h",                   
+                   rel_widths = c(1, 1)) 
+
+plot2 <- plot_grid(AD.enrichment.plot + theme(legend.position = "none",
+                                              plot.margin = unit(c(0, 0.1, -0.5, 0.65), "cm")), 
+                   lmer.AD.plot + theme(legend.position = "none",
+                                        plot.margin = unit(c(0, 0, -0.5, 0.1), "cm")),
                    ncol = 2, align = "h", axis = "tb",                   
                    rel_widths = c(1, 1)) 
 
-plot2 <- plot_grid(blank.plot, get_legend(lmer.AD.plot), blank.plot, get_legend(AD.genes.plot), blank.plot,
-                  ncol = 5, align = "h", axis = "tb",
-                  rel_widths = c(0.26, 1, 1, 1, 0.4))
+plot3 <- plot_grid(get_legend(lmer.neff.up.plot), get_legend(lmer.neff.down.plot),
+                   ncol = 2, align = "h",                   
+                   rel_widths = c(1, 1)) 
 
-plot3 <- plot_grid(lmer.AD.plot + theme(legend.position = "none",
-                                        plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
-                   AD.genes.plot + theme(legend.position = "none",
-                                         plot.margin = unit(c(0, 0, 0, 0.1), "cm")),
+plot4 <- plot_grid(lmer.neff.up.plot + theme(legend.position = "none",
+                                             plot.margin = unit(c(0, 0.1, -0.5, 0), "cm")), 
+                   lmer.neff.down.plot + theme(legend.position = "none",
+                                               plot.margin = unit(c(0, 0.1, -0.5, 0), "cm")), 
                    ncol = 2, align = "h", axis = "tb",                   
-                   rel_widths = c(1, 1.6))
-
-plot4 <- plot_grid(blank.plot, 
-                   lmer.neff.up.plot + theme(plot.margin = unit(c(0, 0.1, 0, 0), "cm")), 
-                   lmer.neff.down.plot + theme(plot.margin = unit(c(0, 0, 0, 0.1), "cm")), 
-                   ncol = 3, align = "h", axis = "tb",                   
-                   rel_widths = c(0.7, 1, 1))
+                   rel_widths = c(1, 1))
 
 
 # Margin: top, right, bottom, and left
-fig4 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")), 
-                  plot2 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
-                  plot3 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
-                  plot4 + theme(plot.margin = unit(c(0, 0, -0.4, 0), "cm")),
-                  ncol = 1, align = "v",                   
-                  rel_heights = c(1, 0.3, 1.4, 1.2))
+fig4 <- plot_grid(plot1 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                  plot2 + theme(plot.margin = unit(c(0, 0, 0.2, 0), "cm")),
+                  AD.genes.plot + theme(plot.margin = unit(c(0.2, 0, 0.2, -0.1), "cm")),
+                  plot3 + theme(plot.margin = unit(c(0.2, 0, 0, 0), "cm")),
+                  plot4 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                  ncol = 1, align = "h",
+                  rel_heights = c(0.2, 1.2, 1.3, 0.2, 1.2))
 
-
-ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure4.png", fig4, height = 190, width = 183,
+fig4
+ggsave("/projects/mludwig/hippo_GLP1/output/figures/figure4.png", fig4, height = 200, width = 183,
        units = "mm")
-
 ```
-
 
 
